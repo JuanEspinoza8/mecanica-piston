@@ -1,11 +1,13 @@
+import { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { ArrowLeft, CarFront, User, Calendar, Wrench, Settings, PackageOpen, Plus, Camera, DollarSign } from 'lucide-react';
+import { ArrowLeft, CarFront, User, Calendar, Wrench, Settings, PackageOpen, Plus, Camera, Trash2, FileText } from 'lucide-react';
+import AddRepuestoModal from '../components/AddRepuestoModal';
 
 export default function OrdenDetail() {
   const { id } = useParams();
 
-  // Mock data para la orden de trabajo
-  const orden = {
+  // Mock data para la orden de trabajo (datos estáticos)
+  const ordenMock = {
     id: id || 'ORD-001',
     estado: 'En proceso',
     fechaIngreso: '28/04/2026',
@@ -18,23 +20,36 @@ export default function OrdenDetail() {
       { id: 2, descripcion: 'Cambio de pastillas de freno', estado: 'En proceso' },
       { id: 3, descripcion: 'Rectificación de discos', estado: 'Pendiente' }
     ],
-    repuestos: [
-      { id: 1, nombre: 'Juego Pastillas de Freno Motorcraft', cantidad: 1, precio: 45000 },
-      { id: 2, nombre: 'Líquido de frenos DOT 4', cantidad: 1, precio: 8500 }
-    ],
-    fotos: [] // Simular que no hay fotos subidas aún
+    repuestosIniciales: [
+      { id: '1', nombre: 'Juego Pastillas de Freno Motorcraft', cantidad: 1, precio: 45000, archivo: null },
+      { id: '2', nombre: 'Líquido de frenos DOT 4', cantidad: 1, precio: 8500, archivo: null }
+    ]
   };
+
+  // Estados interactivos
+  const [repuestos, setRepuestos] = useState(ordenMock.repuestosIniciales);
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
   const getEstadoBadge = (estado) => {
     switch(estado) {
-      case 'Terminado': return 'bg-green-100 text-green-700 border-green-200';
-      case 'En proceso': return 'bg-blue-100 text-blue-700 border-blue-200';
-      case 'Pendiente': return 'bg-neutral-100 text-neutral-600 border-neutral-200';
-      default: return 'bg-orange-100 text-orange-700 border-orange-200';
+      case 'Terminado': return 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 border-green-200 dark:border-green-800/50';
+      case 'En proceso': return 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-800/50';
+      case 'Pendiente': return 'bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 border-neutral-200 dark:border-neutral-700';
+      default: return 'bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400 border-orange-200 dark:border-orange-800/50';
     }
   };
 
-  const totalRepuestos = orden.repuestos.reduce((sum, item) => sum + (item.precio * item.cantidad), 0);
+  // Funciones para manejar repuestos
+  const handleAddRepuesto = (nuevoRepuesto) => {
+    setRepuestos([...repuestos, nuevoRepuesto]);
+  };
+
+  const handleRemoveRepuesto = (idToRemove) => {
+    setRepuestos(repuestos.filter(r => r.id !== idToRemove));
+  };
+
+  // Cálculo del Total en tiempo real
+  const totalRepuestos = repuestos.reduce((sum, item) => sum + (item.precio * item.cantidad), 0);
 
   return (
     <div className="max-w-5xl mx-auto space-y-6 pb-6">
@@ -42,20 +57,20 @@ export default function OrdenDetail() {
       {/* Cabecera de Navegación y Acciones */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-center space-x-4">
-          <Link to="/ordenes" className="p-2 rounded-full hover:bg-neutral-200 transition-colors text-neutral-600">
+          <Link to="/ordenes" className="p-2 rounded-full hover:bg-neutral-200 dark:hover:bg-neutral-800 transition-colors text-neutral-600 dark:text-neutral-400">
             <ArrowLeft className="w-6 h-6" />
           </Link>
           <div>
-            <h1 className="text-2xl font-black text-neutral-900 tracking-tight">{orden.id}</h1>
+            <h1 className="text-2xl font-black text-neutral-900 dark:text-white tracking-tight">{ordenMock.id}</h1>
             <div className="flex items-center mt-1">
-              <span className={`px-2.5 py-0.5 rounded-md text-[10px] font-bold border uppercase tracking-wider ${getEstadoBadge(orden.estado)}`}>
-                {orden.estado}
+              <span className={`px-2.5 py-0.5 rounded-md text-[10px] font-bold border uppercase tracking-wider ${getEstadoBadge(ordenMock.estado)}`}>
+                {ordenMock.estado}
               </span>
             </div>
           </div>
         </div>
         
-        <button className="flex items-center justify-center text-sm font-semibold text-white bg-black hover:bg-neutral-900 px-6 py-2.5 rounded-full transition-colors shadow-lg">
+        <button className="flex items-center justify-center text-sm font-semibold text-white bg-black dark:bg-red-600 hover:bg-neutral-900 dark:hover:bg-red-700 px-6 py-2.5 rounded-full transition-colors shadow-lg">
           <Settings className="w-4 h-4 mr-2" />
           Editar Orden
         </button>
@@ -63,25 +78,23 @@ export default function OrdenDetail() {
 
       {/* Grid Superior: Info de Cliente y Vehículo */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* Tarjeta Cliente */}
-        <Link to={`/clientes/${orden.cliente.id}`} className="bg-white p-5 rounded-2xl border border-neutral-200 shadow-sm hover:border-red-300 hover:shadow-md transition-all group">
-          <div className="flex items-center mb-2 text-neutral-500 text-sm font-semibold uppercase tracking-wider">
+        <Link to={`/clientes/${ordenMock.cliente.id}`} className="bg-white dark:bg-neutral-900 p-5 rounded-2xl border border-neutral-200 dark:border-neutral-800 shadow-sm hover:border-red-300 dark:hover:border-red-500 hover:shadow-md transition-all group">
+          <div className="flex items-center mb-2 text-neutral-500 dark:text-neutral-400 text-sm font-semibold uppercase tracking-wider">
             <User className="w-4 h-4 mr-2" /> Cliente
           </div>
-          <p className="text-xl font-bold text-neutral-900 group-hover:text-red-600 transition-colors">{orden.cliente.nombre}</p>
-          <p className="text-neutral-500">{orden.cliente.telefono}</p>
+          <p className="text-xl font-bold text-neutral-900 dark:text-white group-hover:text-red-600 dark:group-hover:text-red-500 transition-colors">{ordenMock.cliente.nombre}</p>
+          <p className="text-neutral-500 dark:text-neutral-400">{ordenMock.cliente.telefono}</p>
         </Link>
         
-        {/* Tarjeta Vehículo */}
-        <Link to={`/vehiculos/${orden.vehiculo.id}`} className="bg-white p-5 rounded-2xl border border-neutral-200 shadow-sm hover:border-red-300 hover:shadow-md transition-all group">
-          <div className="flex items-center mb-2 text-neutral-500 text-sm font-semibold uppercase tracking-wider">
+        <Link to={`/vehiculos/${ordenMock.vehiculo.id}`} className="bg-white dark:bg-neutral-900 p-5 rounded-2xl border border-neutral-200 dark:border-neutral-800 shadow-sm hover:border-red-300 dark:hover:border-red-500 hover:shadow-md transition-all group">
+          <div className="flex items-center mb-2 text-neutral-500 dark:text-neutral-400 text-sm font-semibold uppercase tracking-wider">
             <CarFront className="w-4 h-4 mr-2" /> Vehículo
           </div>
-          <p className="text-xl font-bold text-neutral-900 group-hover:text-red-600 transition-colors">
-            {orden.vehiculo.marca} {orden.vehiculo.modelo}
+          <p className="text-xl font-bold text-neutral-900 dark:text-white group-hover:text-red-600 dark:group-hover:text-red-500 transition-colors">
+            {ordenMock.vehiculo.marca} {ordenMock.vehiculo.modelo}
           </p>
-          <div className="inline-block bg-black text-white text-[10px] font-bold px-2 py-0.5 rounded mt-1 tracking-widest">
-            {orden.vehiculo.patente}
+          <div className="inline-block bg-black dark:bg-red-600 text-white text-[10px] font-bold px-2 py-0.5 rounded mt-1 tracking-widest">
+            {ordenMock.vehiculo.patente}
           </div>
         </Link>
       </div>
@@ -91,28 +104,26 @@ export default function OrdenDetail() {
         
         {/* Columna Izquierda (Tareas y Síntoma) */}
         <div className="lg:col-span-2 space-y-6">
-          {/* Síntoma Reportado */}
-          <div className="bg-red-50/50 p-5 rounded-2xl border border-red-100">
-            <div className="flex items-center mb-2 text-red-800 text-sm font-semibold uppercase tracking-wider">
+          <div className="bg-red-50/50 dark:bg-red-950/20 p-5 rounded-2xl border border-red-100 dark:border-red-900/30">
+            <div className="flex items-center mb-2 text-red-800 dark:text-red-400 text-sm font-semibold uppercase tracking-wider">
               <Calendar className="w-4 h-4 mr-2" /> Motivo de Ingreso
             </div>
-            <p className="text-neutral-700 italic">"{orden.sintoma}"</p>
+            <p className="text-neutral-700 dark:text-neutral-300 italic">"{ordenMock.sintoma}"</p>
           </div>
 
-          {/* Lista de Tareas */}
-          <div className="bg-white rounded-2xl border border-neutral-200 shadow-sm overflow-hidden">
-            <div className="flex items-center justify-between p-5 border-b border-neutral-100 bg-neutral-50">
-              <h2 className="text-lg font-bold text-neutral-900 flex items-center">
-                <Wrench className="w-5 h-5 mr-2 text-neutral-500" /> Tareas a Realizar
+          <div className="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 shadow-sm overflow-hidden">
+            <div className="flex items-center justify-between p-5 border-b border-neutral-100 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-950/50">
+              <h2 className="text-lg font-bold text-neutral-900 dark:text-white flex items-center">
+                <Wrench className="w-5 h-5 mr-2 text-neutral-500 dark:text-neutral-400" /> Tareas a Realizar
               </h2>
-              <button className="text-sm font-semibold text-red-600 hover:text-red-700 flex items-center">
+              <button className="text-sm font-semibold text-red-600 dark:text-red-500 hover:text-red-700 dark:hover:text-red-400 flex items-center">
                 <Plus className="w-4 h-4 mr-1" /> Agregar Tarea
               </button>
             </div>
-            <div className="divide-y divide-neutral-100">
-              {orden.tareas.map(tarea => (
-                <div key={tarea.id} className="p-4 flex items-center justify-between hover:bg-neutral-50 transition-colors">
-                  <span className={`font-medium ${tarea.estado === 'Terminado' ? 'line-through text-neutral-400' : 'text-neutral-800'}`}>
+            <div className="divide-y divide-neutral-100 dark:divide-neutral-800">
+              {ordenMock.tareas.map(tarea => (
+                <div key={tarea.id} className="p-4 flex items-center justify-between hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors">
+                  <span className={`font-medium ${tarea.estado === 'Terminado' ? 'line-through text-neutral-400 dark:text-neutral-600' : 'text-neutral-800 dark:text-neutral-200'}`}>
                     {tarea.descripcion}
                   </span>
                   <span className={`px-2 py-1 rounded text-xs font-bold border ${getEstadoBadge(tarea.estado)}`}>
@@ -123,49 +134,82 @@ export default function OrdenDetail() {
             </div>
           </div>
 
-          {/* Galería de Fotos (Estado Vacío) */}
-          <div className="bg-white rounded-2xl border border-neutral-200 p-5 shadow-sm">
-            <h2 className="text-lg font-bold text-neutral-900 flex items-center mb-4">
-              <Camera className="w-5 h-5 mr-2 text-neutral-500" /> Evidencia Fotográfica
+          <div className="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 p-5 shadow-sm">
+            <h2 className="text-lg font-bold text-neutral-900 dark:text-white flex items-center mb-4">
+              <Camera className="w-5 h-5 mr-2 text-neutral-500 dark:text-neutral-400" /> Evidencia Fotográfica
             </h2>
-            <div className="border-2 border-dashed border-neutral-200 rounded-xl p-8 flex flex-col items-center justify-center bg-neutral-50 hover:bg-neutral-100 transition-colors cursor-pointer text-neutral-500 hover:text-red-600 group">
+            <div className="border-2 border-dashed border-neutral-200 dark:border-neutral-700 rounded-xl p-8 flex flex-col items-center justify-center bg-neutral-50 dark:bg-neutral-900/50 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors cursor-pointer text-neutral-500 hover:text-red-600 dark:hover:text-red-500 group">
               <Camera className="w-10 h-10 mb-2 text-neutral-400 group-hover:text-red-500 transition-colors" />
-              <p className="font-medium text-center">Haz clic para subir fotos o presupuestos</p>
-              <p className="text-xs text-neutral-400 mt-1">Soporta JPG y PNG</p>
+              <p className="font-medium text-center dark:text-neutral-300">Haz clic para subir fotos o diagnósticos</p>
+              <p className="text-xs text-neutral-400 dark:text-neutral-500 mt-1">Soporta JPG y PNG</p>
             </div>
           </div>
         </div>
 
         {/* Columna Derecha (Repuestos y Costos) */}
         <div className="space-y-6">
-          <div className="bg-white rounded-2xl border border-neutral-200 shadow-sm overflow-hidden flex flex-col h-full">
-            <div className="p-5 border-b border-neutral-100 bg-neutral-50">
-              <h2 className="text-lg font-bold text-neutral-900 flex items-center">
-                <PackageOpen className="w-5 h-5 mr-2 text-neutral-500" /> Repuestos
+          <div className="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 shadow-sm overflow-hidden flex flex-col h-full relative">
+            
+            <div className="p-5 border-b border-neutral-100 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-950/50">
+              <h2 className="text-lg font-bold text-neutral-900 dark:text-white flex items-center justify-between">
+                <div className="flex items-center">
+                  <PackageOpen className="w-5 h-5 mr-2 text-neutral-500 dark:text-neutral-400" /> Repuestos
+                </div>
+                <span className="bg-black dark:bg-red-600 text-white text-xs px-2 py-0.5 rounded-full">{repuestos.length}</span>
               </h2>
             </div>
             
-            <div className="flex-1 p-5 space-y-4">
-              {orden.repuestos.map(rep => (
-                <div key={rep.id} className="flex justify-between items-start">
-                  <div>
-                    <p className="font-semibold text-neutral-800 text-sm">{rep.nombre}</p>
-                    <p className="text-xs text-neutral-500">Cant: {rep.cantidad} x ${rep.precio.toLocaleString('es-AR')}</p>
-                  </div>
-                  <p className="font-bold text-neutral-900 text-sm">
-                    ${(rep.cantidad * rep.precio).toLocaleString('es-AR')}
-                  </p>
+            <div className="flex-1 p-5 space-y-4 max-h-[400px] overflow-y-auto">
+              {repuestos.length === 0 ? (
+                <div className="text-center p-6 bg-neutral-50 dark:bg-neutral-900/50 border border-dashed border-neutral-200 dark:border-neutral-700 rounded-xl">
+                  <PackageOpen className="w-8 h-8 text-neutral-300 dark:text-neutral-600 mx-auto mb-2" />
+                  <p className="text-neutral-500 dark:text-neutral-400 text-sm font-medium">No hay repuestos registrados en esta orden.</p>
                 </div>
-              ))}
-              <button className="w-full py-2 border-2 border-dashed border-neutral-200 rounded-lg text-sm font-semibold text-neutral-500 hover:text-black hover:border-black transition-colors flex items-center justify-center mt-4">
-                <Plus className="w-4 h-4 mr-1" /> Añadir Repuesto
+              ) : (
+                repuestos.map(rep => (
+                  <div key={rep.id} className="group flex justify-between items-start bg-neutral-50 dark:bg-neutral-800/30 p-3 rounded-xl border border-neutral-100 dark:border-neutral-800 hover:border-neutral-200 dark:hover:border-neutral-700 transition-colors">
+                    <div className="flex-1 pr-3">
+                      <p className="font-bold text-neutral-800 dark:text-neutral-200 text-sm leading-tight">{rep.nombre}</p>
+                      <div className="flex items-center mt-1">
+                        <span className="text-xs font-semibold text-neutral-500 dark:text-neutral-400">
+                          {rep.cantidad} x ${rep.precio.toLocaleString('es-AR')}
+                        </span>
+                        {rep.archivo && (
+                          <div className="flex items-center ml-2 pl-2 border-l border-neutral-200 dark:border-neutral-700 text-xs text-blue-600 dark:text-blue-400 font-medium">
+                            <FileText className="w-3 h-3 mr-1" />
+                            Factura
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex flex-col items-end gap-2">
+                      <p className="font-bold text-neutral-900 dark:text-white text-sm">
+                        ${(rep.cantidad * rep.precio).toLocaleString('es-AR')}
+                      </p>
+                      <button 
+                        onClick={() => handleRemoveRepuesto(rep.id)}
+                        className="text-neutral-300 dark:text-neutral-600 hover:text-red-500 dark:hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100 p-1"
+                        title="Eliminar repuesto"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+              
+              <button 
+                onClick={() => setIsModalOpen(true)}
+                className="w-full py-3 border-2 border-dashed border-neutral-200 dark:border-neutral-700 rounded-xl text-sm font-bold text-neutral-500 dark:text-neutral-400 hover:text-red-600 dark:hover:text-red-500 hover:border-red-300 dark:hover:border-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-all flex items-center justify-center mt-4"
+              >
+                <Plus className="w-5 h-5 mr-1" /> Añadir Repuesto
               </button>
             </div>
 
             {/* Total */}
-            <div className="p-5 bg-black text-white mt-auto">
+            <div className="p-5 bg-black dark:bg-neutral-950 text-white mt-auto rounded-b-2xl border-t border-neutral-800">
               <div className="flex justify-between items-center mb-1">
-                <span className="text-neutral-400 text-sm">Total Repuestos</span>
+                <span className="text-neutral-400 text-sm">Subtotal Repuestos</span>
                 <span className="font-bold">${totalRepuestos.toLocaleString('es-AR')}</span>
               </div>
               <div className="flex justify-between items-center mb-3">
@@ -183,6 +227,14 @@ export default function OrdenDetail() {
         </div>
 
       </div>
+
+      {/* Modal interactivo */}
+      <AddRepuestoModal 
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        onAdd={handleAddRepuesto}
+      />
+
     </div>
   );
 }
