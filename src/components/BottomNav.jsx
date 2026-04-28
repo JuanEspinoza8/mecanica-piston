@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom';
-import { Home, Users, Plus, ClipboardList, Search, CarFront } from 'lucide-react';
+import { Home, Users, Plus, ClipboardList, CarFront } from 'lucide-react';
 
 export default function BottomNav() {
   const location = useLocation();
@@ -15,7 +15,7 @@ export default function BottomNav() {
         <div className="flex flex-col items-center justify-center w-14 shrink-0">
           <Link 
             to="/ordenes/nueva" 
-            className="absolute -top-6 flex items-center justify-center h-14 w-14 rounded-full bg-gradient-to-tr from-red-600 to-red-700 shadow-[0_4px_15px_rgba(220,38,38,0.5)] text-white transform transition-transform active:scale-95 border-4 border-neutral-100"
+            className="absolute -top-6 flex items-center justify-center h-14 w-14 rounded-full bg-gradient-to-tr from-red-600 to-red-700 shadow-[0_4px_15px_rgba(220,38,38,0.5)] text-white transform transition-transform active:scale-95 border-4 border-black"
           >
             <Plus className="h-8 w-8" />
           </Link>

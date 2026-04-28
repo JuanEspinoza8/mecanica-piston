@@ -1,9 +1,12 @@
 import { Link, useLocation } from 'react-router-dom';
-import { Home, Users, ClipboardList, Search, CarFront } from 'lucide-react';
+import { Home, Users, ClipboardList, Search, CarFront, Moon, Sun } from 'lucide-react';
 import BottomNav from './BottomNav';
+import useAppStore from '../store/useAppStore';
+import GlobalSearch from './GlobalSearch';
 
 export default function Layout({ children }) {
   const location = useLocation();
+  const { theme, toggleTheme, openSearch } = useAppStore();
   
   const navItems = [
     { name: 'Dashboard', path: '/', icon: Home },
@@ -13,11 +16,13 @@ export default function Layout({ children }) {
   ];
 
   return (
-    <div className="flex h-screen bg-neutral-100 font-sans">
+    <div className="flex h-screen bg-neutral-100 dark:bg-neutral-950 font-sans transition-colors duration-300">
+      <GlobalSearch />
+      
       {/* Sidebar (Solo en Desktop) */}
-      <aside className="hidden w-64 flex-col bg-black text-neutral-300 md:flex border-r border-neutral-900 shadow-2xl z-20">
+      <aside className="hidden w-64 flex-col bg-black dark:bg-black/95 text-neutral-300 md:flex border-r border-neutral-900 dark:border-red-900/30 shadow-2xl z-20">
         {/* Logo / Nombre de la App */}
-        <div className="flex h-24 items-center border-b border-neutral-800 px-5 font-bold text-white bg-black">
+        <div className="flex h-24 items-center border-b border-neutral-800 dark:border-red-900/50 px-5 font-bold text-white bg-black dark:bg-black/90">
           <img 
             src="/logo.png" 
             alt="Pistón Logo" 
@@ -45,8 +50,8 @@ export default function Layout({ children }) {
                 to={item.path}
                 className={`group flex items-center rounded-xl px-4 py-3.5 transition-all duration-300 ease-in-out ${
                   isActive 
-                    ? 'bg-gradient-to-r from-red-600 to-red-700 text-white shadow-lg shadow-red-600/30' 
-                    : 'hover:bg-neutral-900 hover:text-white hover:translate-x-1'
+                    ? 'bg-gradient-to-r from-red-600 to-red-700 text-white shadow-lg shadow-red-600/30 dark:shadow-red-600/10 dark:border dark:border-red-600/50' 
+                    : 'hover:bg-neutral-900 dark:hover:bg-red-950/20 hover:text-white hover:translate-x-1'
                 }`}
               >
                 <Icon 
@@ -65,7 +70,7 @@ export default function Layout({ children }) {
       <div className="flex flex-1 flex-col overflow-hidden relative z-10">
         
         {/* Header (Visible en Desktop y Mobile) */}
-        <header className="flex h-20 items-center justify-between bg-black px-4 shadow-md md:px-8 border-b border-neutral-900 z-10 md:bg-white md:shadow-[0_4px_30px_rgba(0,0,0,0.05)] md:border-neutral-100">
+        <header className="flex h-20 items-center justify-between bg-black md:bg-white dark:md:bg-neutral-950 px-4 shadow-md md:px-8 border-b border-neutral-900 md:border-neutral-100 dark:md:border-red-900/30 z-10 transition-colors duration-300">
           {/* Logo en Mobile */}
           <div className="flex items-center md:hidden overflow-hidden">
             <img 
@@ -83,23 +88,46 @@ export default function Layout({ children }) {
             </div>
           </div>
           
-          <div className="flex-1 md:hidden"></div>
+          <div className="flex-1 md:hidden flex justify-end">
+            {/* Botón Theme Mobile */}
+            <button 
+              onClick={toggleTheme}
+              className="p-2 text-neutral-400 hover:text-white transition-colors mr-2"
+            >
+              {theme === 'dark' ? <Sun className="w-5 h-5 text-red-500" /> : <Moon className="w-5 h-5" />}
+            </button>
+            {/* Botón Buscar Mobile */}
+            <button 
+              onClick={openSearch}
+              className="p-2 text-neutral-400 hover:text-white transition-colors"
+            >
+              <Search className="w-5 h-5" />
+            </button>
+          </div>
           
-          {/* Barra de búsqueda interactiva */}
-          <div className="hidden max-w-2xl flex-1 md:block">
-            <div className="group flex h-12 w-full items-center rounded-full border border-neutral-200 bg-neutral-50 px-5 text-sm text-neutral-400 transition-all focus-within:border-red-500 focus-within:bg-white focus-within:shadow-md focus-within:shadow-red-500/10 hover:bg-white hover:border-neutral-300">
-              <Search className="mr-3 h-5 w-5 text-neutral-400 group-focus-within:text-red-500 transition-colors" />
-              <input 
-                type="text"
-                placeholder="Buscar por patente, modelo, nombre o teléfono..." 
-                className="w-full bg-transparent outline-none text-neutral-800 placeholder:text-neutral-400 font-medium"
-              />
-            </div>
+          {/* Barra de búsqueda interactiva Desktop */}
+          <div className="hidden max-w-2xl flex-1 md:flex items-center space-x-4">
+            <button 
+              onClick={openSearch}
+              className="group flex h-12 w-full max-w-md items-center rounded-full border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900 px-5 text-sm text-neutral-400 transition-all hover:border-red-500 dark:hover:border-red-500/50 hover:bg-white dark:hover:bg-neutral-800"
+            >
+              <Search className="mr-3 h-5 w-5 text-neutral-400 group-hover:text-red-500 transition-colors" />
+              <span className="text-neutral-400 font-medium">Buscar clientes o vehículos (Ctrl+K)...</span>
+            </button>
+
+            {/* Botón Theme Desktop */}
+            <button 
+              onClick={toggleTheme}
+              className="p-3 bg-neutral-100 dark:bg-neutral-900 hover:bg-neutral-200 dark:hover:bg-red-950/30 rounded-full transition-colors border border-transparent dark:hover:border-red-900/50 text-neutral-600 dark:text-red-500"
+              title="Cambiar Modo"
+            >
+              {theme === 'dark' ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+            </button>
           </div>
         </header>
 
         {/* Contenido de la página actual */}
-        <main className="flex-1 overflow-y-auto p-4 pb-24 md:p-8 md:pb-8 bg-neutral-50/50">
+        <main className="flex-1 overflow-y-auto p-4 pb-24 md:p-8 md:pb-8 bg-neutral-50/50 dark:bg-neutral-950/50">
           <div className="max-w-7xl mx-auto">
             {children}
           </div>
