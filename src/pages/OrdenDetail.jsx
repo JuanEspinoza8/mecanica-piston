@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { ArrowLeft, CarFront, User, Calendar, Wrench, Settings, PackageOpen, Plus, Camera, Trash2, FileText, CheckCircle2, Circle } from 'lucide-react';
+import { ArrowLeft, CarFront, User, Calendar, Wrench, Settings, PackageOpen, Plus, Camera, Trash2, FileText, CheckCircle2, Circle, Loader, PauseCircle } from 'lucide-react';
 import AddRepuestoModal from '../components/AddRepuestoModal';
 import ImageViewerModal from '../components/ImageViewerModal';
 
@@ -38,6 +38,7 @@ export default function OrdenDetail() {
   
   const [tareas, setTareas] = useState(ordenMock.tareasIniciales);
   const [manoDeObra, setManoDeObra] = useState('');
+  const [esperandoRepuesto, setEsperandoRepuesto] = useState(false);
   
   const [viewerOpen, setViewerOpen] = useState(false);
   const [viewerIndex, setViewerIndex] = useState(0);
@@ -47,7 +48,8 @@ export default function OrdenDetail() {
       case 'Terminado': return 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 border-green-200 dark:border-green-800/50';
       case 'En proceso': return 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-800/50';
       case 'Pendiente': return 'bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 border-neutral-200 dark:border-neutral-700';
-      default: return 'bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400 border-orange-200 dark:border-orange-800/50';
+      case 'Esperando repuesto': return 'bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400 border-orange-200 dark:border-orange-800/50';
+      default: return 'bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 border-neutral-200 dark:border-neutral-700';
     }
   };
 
@@ -60,11 +62,14 @@ export default function OrdenDetail() {
     setRepuestos(repuestos.filter(r => r.id !== idToRemove));
   };
 
-  // Funciones para tareas (Checklist)
+  // Funciones para tareas (Checklist) - Ciclo: Pendiente → En proceso → Terminado
+  const cicloEstados = ['Pendiente', 'En proceso', 'Terminado'];
   const toggleTarea = (id) => {
     setTareas(tareas.map(t => {
       if (t.id === id) {
-        return { ...t, estado: t.estado === 'Terminado' ? 'Pendiente' : 'Terminado' };
+        const indexActual = cicloEstados.indexOf(t.estado);
+        const siguienteEstado = cicloEstados[(indexActual + 1) % cicloEstados.length];
+        return { ...t, estado: siguienteEstado };
       }
       return t;
     }));
@@ -72,6 +77,15 @@ export default function OrdenDetail() {
 
   const tareasTerminadas = tareas.filter(t => t.estado === 'Terminado').length;
   const progresoPorcentaje = Math.round((tareasTerminadas / tareas.length) * 100);
+
+  // Estado AUTO-CALCULADO de la orden según progreso de tareas
+  const calcularEstadoOrden = () => {
+    if (esperandoRepuesto) return 'Esperando repuesto';
+    if (tareas.every(t => t.estado === 'Terminado')) return 'Terminado';
+    if (tareas.every(t => t.estado === 'Pendiente')) return 'Pendiente';
+    return 'En proceso';
+  };
+  const estadoOrden = calcularEstadoOrden();
 
   // Cálculos de Totales
   const totalRepuestos = repuestos.reduce((sum, item) => sum + (item.precio * item.cantidad), 0);
@@ -94,18 +108,31 @@ export default function OrdenDetail() {
           </Link>
           <div>
             <h1 className="text-2xl font-black text-neutral-900 dark:text-white tracking-tight">{ordenMock.id}</h1>
-            <div className="flex items-center mt-1">
-              <span className={`px-2.5 py-0.5 rounded-md text-[10px] font-bold border uppercase tracking-wider ${getEstadoBadge(ordenMock.estado)}`}>
-                {ordenMock.estado}
+            <div className="flex items-center gap-2 mt-1">
+              <span className={`px-2.5 py-0.5 rounded-md text-[10px] font-bold border uppercase tracking-wider ${getEstadoBadge(estadoOrden)}`}>
+                {estadoOrden}
               </span>
             </div>
           </div>
         </div>
         
-        <button className="flex items-center justify-center text-sm font-semibold text-white bg-black dark:bg-red-600 hover:bg-neutral-900 dark:hover:bg-red-700 px-6 py-2.5 rounded-full transition-colors shadow-lg">
-          <Settings className="w-4 h-4 mr-2" />
-          Editar Orden
-        </button>
+        <div className="flex items-center gap-3">
+          <button 
+            onClick={() => setEsperandoRepuesto(!esperandoRepuesto)}
+            className={`flex items-center text-sm font-semibold px-4 py-2.5 rounded-full transition-all border-2 ${
+              esperandoRepuesto
+                ? 'bg-orange-50 dark:bg-orange-900/20 text-orange-600 dark:text-orange-400 border-orange-300 dark:border-orange-700 shadow-md'
+                : 'bg-white dark:bg-neutral-900 text-neutral-500 dark:text-neutral-400 border-neutral-200 dark:border-neutral-700 hover:border-orange-300 dark:hover:border-orange-700'
+            }`}
+          >
+            <PauseCircle className="w-4 h-4 mr-2" />
+            {esperandoRepuesto ? 'Esperando repuesto ✓' : 'Marcar espera'}
+          </button>
+          <button className="flex items-center justify-center text-sm font-semibold text-white bg-black dark:bg-red-600 hover:bg-neutral-900 dark:hover:bg-red-700 px-6 py-2.5 rounded-full transition-colors shadow-lg">
+            <Settings className="w-4 h-4 mr-2" />
+            Editar Orden
+          </button>
+        </div>
       </div>
 
       {/* Grid Superior: Info de Cliente y Vehículo */}
@@ -171,22 +198,30 @@ export default function OrdenDetail() {
             <div className="divide-y divide-neutral-100 dark:divide-neutral-800">
               {tareas.map(tarea => {
                 const isDone = tarea.estado === 'Terminado';
+                const isInProgress = tarea.estado === 'En proceso';
                 return (
                   <div 
                     key={tarea.id} 
                     onClick={() => toggleTarea(tarea.id)}
                     className={`p-4 flex items-center justify-between transition-colors cursor-pointer select-none
-                      ${isDone ? 'bg-neutral-50/50 dark:bg-neutral-950/30' : 'hover:bg-neutral-50 dark:hover:bg-neutral-800/50'}`}
+                      ${isDone ? 'bg-green-50/50 dark:bg-green-950/10' : isInProgress ? 'bg-blue-50/30 dark:bg-blue-950/10' : 'hover:bg-neutral-50 dark:hover:bg-neutral-800/50'}`}
                   >
                     <div className="flex items-center gap-3 flex-1">
                       {isDone ? (
                         <CheckCircle2 className="w-6 h-6 text-green-500 dark:text-green-400 shrink-0" />
+                      ) : isInProgress ? (
+                        <Loader className="w-6 h-6 text-blue-500 dark:text-blue-400 shrink-0 animate-spin" style={{ animationDuration: '3s' }} />
                       ) : (
                         <Circle className="w-6 h-6 text-neutral-300 dark:text-neutral-600 shrink-0" />
                       )}
-                      <span className={`font-medium transition-all ${isDone ? 'line-through text-neutral-400 dark:text-neutral-600' : 'text-neutral-800 dark:text-neutral-200'}`}>
-                        {tarea.descripcion}
-                      </span>
+                      <div className="flex flex-col">
+                        <span className={`font-medium transition-all ${isDone ? 'line-through text-neutral-400 dark:text-neutral-600' : 'text-neutral-800 dark:text-neutral-200'}`}>
+                          {tarea.descripcion}
+                        </span>
+                        <span className="text-[10px] text-neutral-400 dark:text-neutral-500 mt-0.5">
+                          Clic para avanzar estado
+                        </span>
+                      </div>
                     </div>
                     <span className={`ml-4 px-2 py-1 rounded text-xs font-bold border shrink-0 ${getEstadoBadge(tarea.estado)}`}>
                       {tarea.estado}
