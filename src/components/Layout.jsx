@@ -1,12 +1,18 @@
-import { Link, useLocation } from 'react-router-dom';
-import { Home, Users, ClipboardList, Search, CarFront, Moon, Sun } from 'lucide-react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Home, Users, ClipboardList, Search, CarFront, Moon, Sun, LogOut } from 'lucide-react';
 import BottomNav from './BottomNav';
 import useAppStore from '../store/useAppStore';
 import GlobalSearch from './GlobalSearch';
 
 export default function Layout({ children }) {
   const location = useLocation();
-  const { theme, toggleTheme, openSearch } = useAppStore();
+  const navigate = useNavigate();
+  const { theme, toggleTheme, openSearch, logout, user } = useAppStore();
+
+  const handleLogout = () => {
+    logout();
+    navigate('/login');
+  };
   
   const navItems = [
     { name: 'Dashboard', path: '/', icon: Home },
@@ -64,6 +70,17 @@ export default function Layout({ children }) {
             );
           })}
         </nav>
+
+        {/* Botón Cerrar Sesión */}
+        <div className="p-4 border-t border-neutral-800 dark:border-red-900/30">
+          <button
+            onClick={handleLogout}
+            className="group flex items-center w-full rounded-xl px-4 py-3 text-neutral-500 hover:bg-red-950/30 hover:text-red-400 transition-all duration-300"
+          >
+            <LogOut className="mr-3 h-5 w-5 group-hover:scale-110 transition-transform" />
+            <span className="font-medium tracking-wide text-sm">Cerrar Sesión</span>
+          </button>
+        </div>
       </aside>
 
       {/* Contenedor Principal (Header + Contenido) */}
@@ -99,9 +116,16 @@ export default function Layout({ children }) {
             {/* Botón Buscar Mobile */}
             <button 
               onClick={openSearch}
-              className="p-2 text-neutral-400 hover:text-white transition-colors"
+              className="p-2 text-neutral-400 hover:text-white transition-colors mr-2"
             >
               <Search className="w-5 h-5" />
+            </button>
+            {/* Botón Logout Mobile */}
+            <button 
+              onClick={handleLogout}
+              className="p-2 text-neutral-400 hover:text-red-500 transition-colors"
+            >
+              <LogOut className="w-5 h-5" />
             </button>
           </div>
           

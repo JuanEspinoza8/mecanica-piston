@@ -12,10 +12,16 @@ const useAppStore = create(
       isSearchOpen: false,
       openSearch: () => set({ isSearchOpen: true }),
       closeSearch: () => set({ isSearchOpen: false }),
+
+      // Autenticación (simulada - Juan conectará con Supabase Auth)
+      user: null,
+      isAuthenticated: false,
+      login: (userData) => set({ user: userData, isAuthenticated: true }),
+      logout: () => set({ user: null, isAuthenticated: false }),
     }),
     {
-      name: 'mecanica-piston-storage', // Nombre de la key en localStorage
-      partialize: (state) => ({ theme: state.theme }), // Solo queremos persistir el tema
+      name: 'mecanica-piston-storage',
+      partialize: (state) => ({ theme: state.theme, user: state.user, isAuthenticated: state.isAuthenticated }),
     }
   )
 );

@@ -87,3 +87,36 @@
     @apply font-sans;
   }
 }
+
+/* Google Font para el Login */
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&display=swap');
+
+/* Animaciones personalizadas del Login / Splash */
+@keyframes drive-car {
+  0% {
+    transform: translateX(110vw);
+  }
+  100% {
+    transform: translateX(-150px);
+  }
+}
+
+@keyframes loading-bar {
+  0% {
+    width: 0%;
+  }
+  50% {
+    width: 70%;
+  }
+  100% {
+    width: 100%;
+  }
+}
+
+.animate-drive-car {
+  animation: drive-car 3s ease-in-out forwards;
+}
+
+.animate-loading-bar {
+  animation: loading-bar 2.5s ease-in-out forwards;
+}
