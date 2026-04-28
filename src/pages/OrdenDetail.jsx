@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { ArrowLeft, CarFront, User, Calendar, Wrench, Settings, PackageOpen, Plus, Camera, Trash2, FileText, CheckCircle2, Circle, Loader, PauseCircle } from 'lucide-react';
+import { ArrowLeft, CarFront, User, Calendar, Wrench, Settings, PackageOpen, Plus, Camera, Trash2, FileText, CheckCircle2, Circle, Loader, PauseCircle, X, Save } from 'lucide-react';
 import AddRepuestoModal from '../components/AddRepuestoModal';
 import ImageViewerModal from '../components/ImageViewerModal';
 
@@ -42,6 +42,21 @@ export default function OrdenDetail() {
   
   const [viewerOpen, setViewerOpen] = useState(false);
   const [viewerIndex, setViewerIndex] = useState(0);
+
+  // Estado para agregar tareas inline
+  const [addingTarea, setAddingTarea] = useState(false);
+  const [nuevaTareaTexto, setNuevaTareaTexto] = useState('');
+
+  // Estado para el modal de editar orden
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [editSintoma, setEditSintoma] = useState(ordenMock.sintoma);
+  const [editFechaEstimada, setEditFechaEstimada] = useState(ordenMock.fechaEstimada);
+  const [editNotas, setEditNotas] = useState('');
+
+  // Datos editables de la orden
+  const [sintomaActual, setSintomaActual] = useState(ordenMock.sintoma);
+  const [fechaEstimadaActual, setFechaEstimadaActual] = useState(ordenMock.fechaEstimada);
+  const [notasActual, setNotasActual] = useState('');
 
   const getEstadoBadge = (estado) => {
     switch(estado) {
@@ -97,6 +112,31 @@ export default function OrdenDetail() {
     setViewerOpen(true);
   };
 
+  // Agregar nueva tarea
+  const handleAddTarea = () => {
+    if (nuevaTareaTexto.trim() === '') return;
+    const newId = Math.max(...tareas.map(t => t.id), 0) + 1;
+    setTareas([...tareas, { id: newId, descripcion: nuevaTareaTexto.trim(), estado: 'Pendiente' }]);
+    setNuevaTareaTexto('');
+    setAddingTarea(false);
+  };
+
+  // Abrir modal de editar con datos actuales
+  const openEditModal = () => {
+    setEditSintoma(sintomaActual);
+    setEditFechaEstimada(fechaEstimadaActual);
+    setEditNotas(notasActual);
+    setEditModalOpen(true);
+  };
+
+  // Guardar cambios de editar orden
+  const handleSaveOrden = () => {
+    setSintomaActual(editSintoma);
+    setFechaEstimadaActual(editFechaEstimada);
+    setNotasActual(editNotas);
+    setEditModalOpen(false);
+  };
+
   return (
     <div className="max-w-5xl mx-auto space-y-6 pb-6">
       
@@ -128,7 +168,10 @@ export default function OrdenDetail() {
             <PauseCircle className="w-4 h-4 mr-2" />
             {esperandoRepuesto ? 'Esperando repuesto ✓' : 'Marcar espera'}
           </button>
-          <button className="flex items-center justify-center text-sm font-semibold text-white bg-black dark:bg-red-600 hover:bg-neutral-900 dark:hover:bg-red-700 px-6 py-2.5 rounded-full transition-colors shadow-lg">
+          <button 
+            onClick={openEditModal}
+            className="flex items-center justify-center text-sm font-semibold text-white bg-black dark:bg-red-600 hover:bg-neutral-900 dark:hover:bg-red-700 px-6 py-2.5 rounded-full transition-colors shadow-lg"
+          >
             <Settings className="w-4 h-4 mr-2" />
             Editar Orden
           </button>
@@ -167,7 +210,12 @@ export default function OrdenDetail() {
             <div className="flex items-center mb-2 text-red-800 dark:text-red-400 text-sm font-semibold uppercase tracking-wider">
               <Calendar className="w-4 h-4 mr-2" /> Motivo de Ingreso
             </div>
-            <p className="text-neutral-700 dark:text-neutral-300 italic">"{ordenMock.sintoma}"</p>
+            <p className="text-neutral-700 dark:text-neutral-300 italic">"{sintomaActual}"</p>
+            {notasActual && (
+              <p className="text-neutral-500 dark:text-neutral-400 text-sm mt-2 border-t border-red-100 dark:border-red-900/30 pt-2">
+                <span className="font-semibold text-neutral-600 dark:text-neutral-300">Notas:</span> {notasActual}
+              </p>
+            )}
           </div>
 
           <div className="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 shadow-sm overflow-hidden">
@@ -176,7 +224,10 @@ export default function OrdenDetail() {
                 <h2 className="text-lg font-bold text-neutral-900 dark:text-white flex items-center">
                   <Wrench className="w-5 h-5 mr-2 text-neutral-500 dark:text-neutral-400" /> Tareas a Realizar
                 </h2>
-                <button className="text-sm font-semibold text-red-600 dark:text-red-500 hover:text-red-700 dark:hover:text-red-400 flex items-center">
+                <button 
+                  onClick={() => setAddingTarea(true)}
+                  className="text-sm font-semibold text-red-600 dark:text-red-500 hover:text-red-700 dark:hover:text-red-400 flex items-center"
+                >
                   <Plus className="w-4 h-4 mr-1" /> Nueva Tarea
                 </button>
               </div>
@@ -229,6 +280,35 @@ export default function OrdenDetail() {
                   </div>
                 );
               })}
+              
+              {/* Input inline para nueva tarea */}
+              {addingTarea && (
+                <div className="p-4 flex items-center gap-3 bg-red-50/30 dark:bg-red-950/10 border-t border-neutral-100 dark:border-neutral-800 animate-in slide-in-from-top-2 duration-200">
+                  <Circle className="w-6 h-6 text-neutral-300 dark:text-neutral-600 shrink-0" />
+                  <input 
+                    type="text"
+                    autoFocus
+                    placeholder="Ej: Cambio de aceite y filtro..."
+                    value={nuevaTareaTexto}
+                    onChange={(e) => setNuevaTareaTexto(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') handleAddTarea(); if (e.key === 'Escape') { setAddingTarea(false); setNuevaTareaTexto(''); } }}
+                    className="flex-1 bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg px-3 py-2 text-neutral-800 dark:text-white focus:outline-none focus:border-red-500 dark:focus:border-red-500 transition-colors text-sm"
+                  />
+                  <button 
+                    onClick={handleAddTarea}
+                    disabled={!nuevaTareaTexto.trim()}
+                    className="px-4 py-2 bg-red-600 hover:bg-red-700 disabled:bg-neutral-300 dark:disabled:bg-neutral-700 text-white text-sm font-bold rounded-lg transition-colors shrink-0"
+                  >
+                    Agregar
+                  </button>
+                  <button 
+                    onClick={() => { setAddingTarea(false); setNuevaTareaTexto(''); }}
+                    className="p-2 text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 transition-colors shrink-0"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+              )}
             </div>
           </div>
 
@@ -369,6 +449,88 @@ export default function OrdenDetail() {
         initialIndex={viewerIndex}
         onClose={() => setViewerOpen(false)}
       />
+
+      {/* Modal Editar Orden */}
+      {editModalOpen && (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200 p-4">
+          <div className="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 shadow-2xl w-full max-w-lg animate-in zoom-in-95 duration-200">
+            
+            {/* Header del modal */}
+            <div className="flex items-center justify-between p-6 border-b border-neutral-100 dark:border-neutral-800">
+              <h2 className="text-xl font-bold text-neutral-900 dark:text-white flex items-center">
+                <Settings className="w-5 h-5 mr-2 text-neutral-500 dark:text-neutral-400" />
+                Editar Orden
+              </h2>
+              <button 
+                onClick={() => setEditModalOpen(false)}
+                className="p-2 rounded-full hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Cuerpo del modal */}
+            <div className="p-6 space-y-5">
+              
+              <div>
+                <label className="block text-sm font-semibold text-neutral-700 dark:text-neutral-300 mb-1.5">
+                  Motivo de Ingreso / Síntoma
+                </label>
+                <textarea
+                  value={editSintoma}
+                  onChange={(e) => setEditSintoma(e.target.value)}
+                  rows={3}
+                  className="w-full bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl px-4 py-3 text-neutral-800 dark:text-white focus:outline-none focus:border-red-500 dark:focus:border-red-500 transition-colors resize-none text-sm"
+                  placeholder="Describe el problema del vehículo..."
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-neutral-700 dark:text-neutral-300 mb-1.5">
+                  Fecha Estimada de Entrega
+                </label>
+                <input
+                  type="text"
+                  value={editFechaEstimada}
+                  onChange={(e) => setEditFechaEstimada(e.target.value)}
+                  className="w-full bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl px-4 py-3 text-neutral-800 dark:text-white focus:outline-none focus:border-red-500 dark:focus:border-red-500 transition-colors text-sm"
+                  placeholder="Ej: 02/05/2026"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-neutral-700 dark:text-neutral-300 mb-1.5">
+                  Notas Internas
+                </label>
+                <textarea
+                  value={editNotas}
+                  onChange={(e) => setEditNotas(e.target.value)}
+                  rows={2}
+                  className="w-full bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl px-4 py-3 text-neutral-800 dark:text-white focus:outline-none focus:border-red-500 dark:focus:border-red-500 transition-colors resize-none text-sm"
+                  placeholder="Notas visibles solo para el taller..."
+                />
+              </div>
+            </div>
+
+            {/* Footer del modal */}
+            <div className="flex items-center justify-end gap-3 p-6 border-t border-neutral-100 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-950/50 rounded-b-2xl">
+              <button
+                onClick={() => setEditModalOpen(false)}
+                className="px-5 py-2.5 text-sm font-semibold text-neutral-600 dark:text-neutral-400 hover:text-neutral-800 dark:hover:text-neutral-200 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleSaveOrden}
+                className="flex items-center px-6 py-2.5 bg-red-600 hover:bg-red-700 text-white text-sm font-bold rounded-full transition-colors shadow-lg shadow-red-600/20"
+              >
+                <Save className="w-4 h-4 mr-2" />
+                Guardar Cambios
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );
