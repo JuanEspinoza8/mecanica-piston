@@ -31,7 +31,10 @@ export const vehiculoSchema = z.object({
   patente: z.string()
     .min(6, 'La patente debe tener al menos 6 caracteres')
     .max(10, 'Patente demasiado larga')
-    .regex(/^[A-Za-z0-9\s]+$/, 'La patente solo puede contener letras y números'),
+    .regex(
+      /^([A-Za-z]{3}\s?\d{3}|[A-Za-z]{2}\s?\d{3}\s?[A-Za-z]{2})$/,
+      'Formato inválido. Usá AAA 123 o AA 123 BB'
+    ),
   marca: z.string().min(2, 'La marca es obligatoria').max(30, 'Marca demasiado larga'),
   modelo: z.string().min(1, 'El modelo es obligatorio').max(50, 'Modelo demasiado largo'),
   año: z.coerce.number()
