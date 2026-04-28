@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { ArrowLeft, CarFront, User, Calendar, Wrench, Settings, PackageOpen, Plus, Camera, Trash2, FileText } from 'lucide-react';
+import { ArrowLeft, CarFront, User, Calendar, Wrench, Settings, PackageOpen, Plus, Camera, Trash2, FileText, CheckCircle2, Circle } from 'lucide-react';
 import AddRepuestoModal from '../components/AddRepuestoModal';
+import ImageViewerModal from '../components/ImageViewerModal';
 
 export default function OrdenDetail() {
   const { id } = useParams();
@@ -15,20 +16,31 @@ export default function OrdenDetail() {
     cliente: { id: 1, nombre: 'Juan Pérez', telefono: '+54 11 1234-5678' },
     vehiculo: { id: 101, marca: 'Ford', modelo: 'Fiesta', patente: 'AB 123 CD', año: 2018 },
     sintoma: 'El auto hace un ruido metálico al frenar y vibra el volante.',
-    tareas: [
+    tareasIniciales: [
       { id: 1, descripcion: 'Revisión completa del tren delantero', estado: 'Terminado' },
       { id: 2, descripcion: 'Cambio de pastillas de freno', estado: 'En proceso' },
-      { id: 3, descripcion: 'Rectificación de discos', estado: 'Pendiente' }
+      { id: 3, descripcion: 'Rectificación de discos', estado: 'Pendiente' },
+      { id: 4, descripcion: 'Alineación y balanceo', estado: 'Pendiente' }
     ],
     repuestosIniciales: [
       { id: '1', nombre: 'Juego Pastillas de Freno Motorcraft', cantidad: 1, precio: 45000, archivo: null },
       { id: '2', nombre: 'Líquido de frenos DOT 4', cantidad: 1, precio: 8500, archivo: null }
+    ],
+    fotos: [
+      { id: 1, url: 'https://images.unsplash.com/photo-1486262715619-670810a044e1?ixlib=rb-4.0.3&auto=format&fit=crop&w=1200&q=80', titulo: 'Motor al ingresar' },
+      { id: 2, url: 'https://images.unsplash.com/photo-1503375497475-4fc14c0a5fa7?ixlib=rb-4.0.3&auto=format&fit=crop&w=1200&q=80', titulo: 'Discos desgastados' }
     ]
   };
 
   // Estados interactivos
   const [repuestos, setRepuestos] = useState(ordenMock.repuestosIniciales);
-  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isRepuestoModalOpen, setIsRepuestoModalOpen] = useState(false);
+  
+  const [tareas, setTareas] = useState(ordenMock.tareasIniciales);
+  const [manoDeObra, setManoDeObra] = useState('');
+  
+  const [viewerOpen, setViewerOpen] = useState(false);
+  const [viewerIndex, setViewerIndex] = useState(0);
 
   const getEstadoBadge = (estado) => {
     switch(estado) {
@@ -48,8 +60,28 @@ export default function OrdenDetail() {
     setRepuestos(repuestos.filter(r => r.id !== idToRemove));
   };
 
-  // Cálculo del Total en tiempo real
+  // Funciones para tareas (Checklist)
+  const toggleTarea = (id) => {
+    setTareas(tareas.map(t => {
+      if (t.id === id) {
+        return { ...t, estado: t.estado === 'Terminado' ? 'Pendiente' : 'Terminado' };
+      }
+      return t;
+    }));
+  };
+
+  const tareasTerminadas = tareas.filter(t => t.estado === 'Terminado').length;
+  const progresoPorcentaje = Math.round((tareasTerminadas / tareas.length) * 100);
+
+  // Cálculos de Totales
   const totalRepuestos = repuestos.reduce((sum, item) => sum + (item.precio * item.cantidad), 0);
+  const costoManoDeObra = parseFloat(manoDeObra) || 0;
+  const totalEstimado = totalRepuestos + costoManoDeObra;
+
+  const openImageViewer = (index) => {
+    setViewerIndex(index);
+    setViewerOpen(true);
+  };
 
   return (
     <div className="max-w-5xl mx-auto space-y-6 pb-6">
@@ -112,36 +144,83 @@ export default function OrdenDetail() {
           </div>
 
           <div className="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 shadow-sm overflow-hidden">
-            <div className="flex items-center justify-between p-5 border-b border-neutral-100 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-950/50">
-              <h2 className="text-lg font-bold text-neutral-900 dark:text-white flex items-center">
-                <Wrench className="w-5 h-5 mr-2 text-neutral-500 dark:text-neutral-400" /> Tareas a Realizar
-              </h2>
-              <button className="text-sm font-semibold text-red-600 dark:text-red-500 hover:text-red-700 dark:hover:text-red-400 flex items-center">
-                <Plus className="w-4 h-4 mr-1" /> Agregar Tarea
-              </button>
-            </div>
-            <div className="divide-y divide-neutral-100 dark:divide-neutral-800">
-              {ordenMock.tareas.map(tarea => (
-                <div key={tarea.id} className="p-4 flex items-center justify-between hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors">
-                  <span className={`font-medium ${tarea.estado === 'Terminado' ? 'line-through text-neutral-400 dark:text-neutral-600' : 'text-neutral-800 dark:text-neutral-200'}`}>
-                    {tarea.descripcion}
-                  </span>
-                  <span className={`px-2 py-1 rounded text-xs font-bold border ${getEstadoBadge(tarea.estado)}`}>
-                    {tarea.estado}
-                  </span>
+            <div className="p-5 border-b border-neutral-100 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-950/50">
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-lg font-bold text-neutral-900 dark:text-white flex items-center">
+                  <Wrench className="w-5 h-5 mr-2 text-neutral-500 dark:text-neutral-400" /> Tareas a Realizar
+                </h2>
+                <button className="text-sm font-semibold text-red-600 dark:text-red-500 hover:text-red-700 dark:hover:text-red-400 flex items-center">
+                  <Plus className="w-4 h-4 mr-1" /> Nueva Tarea
+                </button>
+              </div>
+              
+              {/* Barra de progreso */}
+              <div className="flex items-center gap-3">
+                <div className="flex-1 h-2 bg-neutral-200 dark:bg-neutral-800 rounded-full overflow-hidden">
+                  <div 
+                    className="h-full bg-red-600 transition-all duration-500 ease-out"
+                    style={{ width: `${progresoPorcentaje}%` }}
+                  ></div>
                 </div>
-              ))}
+                <span className="text-xs font-bold text-neutral-500 dark:text-neutral-400 whitespace-nowrap">
+                  {tareasTerminadas} de {tareas.length} ({progresoPorcentaje}%)
+                </span>
+              </div>
+            </div>
+            
+            <div className="divide-y divide-neutral-100 dark:divide-neutral-800">
+              {tareas.map(tarea => {
+                const isDone = tarea.estado === 'Terminado';
+                return (
+                  <div 
+                    key={tarea.id} 
+                    onClick={() => toggleTarea(tarea.id)}
+                    className={`p-4 flex items-center justify-between transition-colors cursor-pointer select-none
+                      ${isDone ? 'bg-neutral-50/50 dark:bg-neutral-950/30' : 'hover:bg-neutral-50 dark:hover:bg-neutral-800/50'}`}
+                  >
+                    <div className="flex items-center gap-3 flex-1">
+                      {isDone ? (
+                        <CheckCircle2 className="w-6 h-6 text-green-500 dark:text-green-400 shrink-0" />
+                      ) : (
+                        <Circle className="w-6 h-6 text-neutral-300 dark:text-neutral-600 shrink-0" />
+                      )}
+                      <span className={`font-medium transition-all ${isDone ? 'line-through text-neutral-400 dark:text-neutral-600' : 'text-neutral-800 dark:text-neutral-200'}`}>
+                        {tarea.descripcion}
+                      </span>
+                    </div>
+                    <span className={`ml-4 px-2 py-1 rounded text-xs font-bold border shrink-0 ${getEstadoBadge(tarea.estado)}`}>
+                      {tarea.estado}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
           </div>
 
           <div className="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 p-5 shadow-sm">
-            <h2 className="text-lg font-bold text-neutral-900 dark:text-white flex items-center mb-4">
-              <Camera className="w-5 h-5 mr-2 text-neutral-500 dark:text-neutral-400" /> Evidencia Fotográfica
-            </h2>
-            <div className="border-2 border-dashed border-neutral-200 dark:border-neutral-700 rounded-xl p-8 flex flex-col items-center justify-center bg-neutral-50 dark:bg-neutral-900/50 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors cursor-pointer text-neutral-500 hover:text-red-600 dark:hover:text-red-500 group">
-              <Camera className="w-10 h-10 mb-2 text-neutral-400 group-hover:text-red-500 transition-colors" />
-              <p className="font-medium text-center dark:text-neutral-300">Haz clic para subir fotos o diagnósticos</p>
-              <p className="text-xs text-neutral-400 dark:text-neutral-500 mt-1">Soporta JPG y PNG</p>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-bold text-neutral-900 dark:text-white flex items-center">
+                <Camera className="w-5 h-5 mr-2 text-neutral-500 dark:text-neutral-400" /> Evidencia Fotográfica
+              </h2>
+            </div>
+            
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+              {ordenMock.fotos.map((foto, index) => (
+                <div 
+                  key={foto.id} 
+                  onClick={() => openImageViewer(index)}
+                  className="aspect-square rounded-xl overflow-hidden border border-neutral-200 dark:border-neutral-700 cursor-pointer group relative"
+                >
+                  <img src={foto.url} alt={foto.titulo} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300" />
+                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                    <span className="text-white text-xs font-bold px-2 text-center">{foto.titulo}</span>
+                  </div>
+                </div>
+              ))}
+              <div className="aspect-square border-2 border-dashed border-neutral-200 dark:border-neutral-700 rounded-xl flex flex-col items-center justify-center bg-neutral-50 dark:bg-neutral-900/50 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors cursor-pointer text-neutral-400 hover:text-red-600 dark:hover:text-red-500 group">
+                <Plus className="w-8 h-8 mb-1 group-hover:scale-110 transition-transform" />
+                <span className="text-xs font-bold">Subir foto</span>
+              </div>
             </div>
           </div>
         </div>
@@ -199,27 +278,40 @@ export default function OrdenDetail() {
               )}
               
               <button 
-                onClick={() => setIsModalOpen(true)}
+                onClick={() => setIsRepuestoModalOpen(true)}
                 className="w-full py-3 border-2 border-dashed border-neutral-200 dark:border-neutral-700 rounded-xl text-sm font-bold text-neutral-500 dark:text-neutral-400 hover:text-red-600 dark:hover:text-red-500 hover:border-red-300 dark:hover:border-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-all flex items-center justify-center mt-4"
               >
                 <Plus className="w-5 h-5 mr-1" /> Añadir Repuesto
               </button>
             </div>
 
-            {/* Total */}
-            <div className="p-5 bg-black dark:bg-neutral-950 text-white mt-auto rounded-b-2xl border-t border-neutral-800">
-              <div className="flex justify-between items-center mb-1">
-                <span className="text-neutral-400 text-sm">Subtotal Repuestos</span>
+            {/* Total y Mano de Obra */}
+            <div className="p-5 bg-black dark:bg-neutral-950 text-white mt-auto rounded-b-2xl border-t border-neutral-800 space-y-4">
+              
+              <div className="flex justify-between items-center text-sm">
+                <span className="text-neutral-400">Subtotal Repuestos</span>
                 <span className="font-bold">${totalRepuestos.toLocaleString('es-AR')}</span>
               </div>
-              <div className="flex justify-between items-center mb-3">
-                <span className="text-neutral-400 text-sm">Mano de Obra</span>
-                <span className="font-bold text-neutral-400 italic">A definir</span>
+              
+              <div className="flex justify-between items-center text-sm group">
+                <span className="text-neutral-400">Mano de Obra</span>
+                <div className="flex items-center">
+                  <span className="text-neutral-400 mr-1">$</span>
+                  <input 
+                    type="number"
+                    min="0"
+                    placeholder="0"
+                    value={manoDeObra}
+                    onChange={(e) => setManoDeObra(e.target.value)}
+                    className="w-24 bg-neutral-900 dark:bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-right text-white font-bold focus:outline-none focus:border-red-500 transition-colors appearance-none"
+                  />
+                </div>
               </div>
-              <div className="border-t border-neutral-800 pt-3 flex justify-between items-center">
+              
+              <div className="border-t border-neutral-800 pt-4 flex justify-between items-center">
                 <span className="font-black text-lg">Total Estimado</span>
                 <span className="font-black text-2xl text-red-500 flex items-center">
-                  ${totalRepuestos.toLocaleString('es-AR')}
+                  ${totalEstimado.toLocaleString('es-AR')}
                 </span>
               </div>
             </div>
@@ -228,11 +320,19 @@ export default function OrdenDetail() {
 
       </div>
 
-      {/* Modal interactivo */}
+      {/* Modal interactivo de repuestos */}
       <AddRepuestoModal 
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
+        isOpen={isRepuestoModalOpen}
+        onClose={() => setIsRepuestoModalOpen(false)}
         onAdd={handleAddRepuesto}
+      />
+
+      {/* Modal visor de imágenes */}
+      <ImageViewerModal 
+        isOpen={viewerOpen}
+        images={ordenMock.fotos}
+        initialIndex={viewerIndex}
+        onClose={() => setViewerOpen(false)}
       />
 
     </div>
