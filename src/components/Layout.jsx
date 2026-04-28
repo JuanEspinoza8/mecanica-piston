@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom';
-import { Home, Users, ClipboardList, Search } from 'lucide-react';
+import { Home, Users, ClipboardList, Search, CarFront } from 'lucide-react';
 import BottomNav from './BottomNav';
 
 export default function Layout({ children }) {
@@ -8,6 +8,7 @@ export default function Layout({ children }) {
   const navItems = [
     { name: 'Dashboard', path: '/', icon: Home },
     { name: 'Clientes', path: '/clientes', icon: Users },
+    { name: 'Vehículos', path: '/vehiculos', icon: CarFront },
     { name: 'Órdenes', path: '/ordenes', icon: ClipboardList },
   ];
 
