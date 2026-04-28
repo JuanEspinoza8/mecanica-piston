@@ -25,13 +25,13 @@ export default function OrdenNueva() {
       <div className="flex items-center space-x-4">
         <Link 
           to="/ordenes"
-          className="p-2 rounded-full hover:bg-neutral-200 transition-colors text-neutral-600"
+          className="p-2 rounded-full hover:bg-neutral-200 dark:hover:bg-neutral-800 transition-colors text-neutral-600 dark:text-neutral-400"
         >
           <ArrowLeft className="w-6 h-6" />
         </Link>
         <div>
-          <h1 className="text-2xl font-bold text-neutral-900">Nueva Orden de Trabajo</h1>
-          <p className="text-neutral-500">Ingresa un vehículo al taller y abre su bitácora.</p>
+          <h1 className="text-2xl font-bold text-neutral-900 dark:text-white">Nueva Orden de Trabajo</h1>
+          <p className="text-neutral-500 dark:text-neutral-400">Ingresa un vehículo al taller y abre su bitácora.</p>
         </div>
       </div>
 

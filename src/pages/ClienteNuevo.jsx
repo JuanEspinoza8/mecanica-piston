@@ -26,13 +26,13 @@ export default function ClienteNuevo() {
       <div className="flex items-center space-x-4">
         <Link 
           to="/clientes"
-          className="p-2 rounded-full hover:bg-neutral-200 transition-colors text-neutral-600"
+          className="p-2 rounded-full hover:bg-neutral-200 dark:hover:bg-neutral-800 transition-colors text-neutral-600 dark:text-neutral-400"
         >
           <ArrowLeft className="w-6 h-6" />
         </Link>
         <div>
-          <h1 className="text-2xl font-bold text-neutral-900">Nuevo Cliente</h1>
-          <p className="text-neutral-500">Registra un nuevo cliente en el sistema.</p>
+          <h1 className="text-2xl font-bold text-neutral-900 dark:text-white">Nuevo Cliente</h1>
+          <p className="text-neutral-500 dark:text-neutral-400">Registra un nuevo cliente en el sistema.</p>
         </div>
       </div>
 
