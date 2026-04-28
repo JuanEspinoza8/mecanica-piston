@@ -2,6 +2,7 @@ import { lazy } from 'react'
 
 const Dashboard = lazy(() => import('./pages/Dashboard'))
 const ClientesList = lazy(() => import('./pages/ClientesList'))
+const ClienteNuevo = lazy(() => import('./pages/ClienteNuevo'))
 const ClienteDetail = lazy(() => import('./pages/ClienteDetail'))
 const VehiculoDetail = lazy(() => import('./pages/VehiculoDetail'))
 const OrdenDetail = lazy(() => import('./pages/OrdenDetail'))
@@ -15,6 +16,10 @@ export const routes = [
   {
     path: '/clientes',
     element: <ClientesList />,
+  },
+  {
+    path: '/clientes/nuevo',
+    element: <ClienteNuevo />,
   },
   {
     path: '/clientes/:id',
