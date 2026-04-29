@@ -1,0 +1,41 @@
+import { useNavigate, Link } from 'react-router-dom';
+import { ArrowLeft } from 'lucide-react';
+import OrdenForm from '../components/OrdenForm';
+
+export default function OrdenNueva() {
+  const navigate = useNavigate();
+
+  // Función que se ejecuta cuando el formulario es válido y se envía
+  const onSubmit = async (data) => {
+    console.log("Datos recibidos de la nueva orden:", data);
+    
+    // Simulación de carga (Juan conectará esto a Supabase luego)
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    
+    // Al terminar, volvemos a la lista de órdenes
+    navigate('/ordenes');
+  };
+
+  return (
+    <div className="max-w-3xl mx-auto space-y-6 pb-6">
+      
+      {/* Botón volver y Título */}
+      <div className="flex items-center space-x-4">
+        <Link 
+          to="/ordenes"
+          className="p-2 rounded-full hover:bg-neutral-200 transition-colors text-neutral-600"
+        >
+          <ArrowLeft className="w-6 h-6" />
+        </Link>
+        <div>
+          <h1 className="text-2xl font-bold text-neutral-900">Nueva Orden de Trabajo</h1>
+          <p className="text-neutral-500">Ingresa un vehículo al taller y abre su bitácora.</p>
+        </div>
+      </div>
+
+      {/* Componente del Formulario */}
+      <OrdenForm onSubmit={onSubmit} isSubmitting={false} />
+      
+    </div>
+  );
+}
