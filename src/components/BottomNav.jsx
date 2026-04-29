@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom';
-import { Home, Users, Plus, ClipboardList, Search } from 'lucide-react';
+import { Home, Users, Plus, ClipboardList, Search, CarFront } from 'lucide-react';
 
 export default function BottomNav() {
   const location = useLocation();
@@ -24,7 +24,7 @@ export default function BottomNav() {
         </div>
         
         <NavItem path="/ordenes" icon={ClipboardList} label="Órdenes" currentPath={location.pathname} />
-        <NavItem path="/buscar" icon={Search} label="Buscar" currentPath={location.pathname} />
+        <NavItem path="/vehiculos" icon={CarFront} label="Vehículos" currentPath={location.pathname} />
 
       </div>
     </nav>
