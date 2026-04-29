@@ -1,5 +1,6 @@
 import { useNavigate, Link } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
+import { toast } from 'sonner';
 import OrdenForm from '../components/OrdenForm';
 
 export default function OrdenNueva() {
@@ -12,6 +13,7 @@ export default function OrdenNueva() {
     // Simulación de carga (Juan conectará esto a Supabase luego)
     await new Promise(resolve => setTimeout(resolve, 1000));
     
+    toast.success('Orden creada correctamente');
     // Al terminar, volvemos a la lista de órdenes
     navigate('/ordenes');
   };

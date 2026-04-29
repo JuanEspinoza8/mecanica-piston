@@ -1,5 +1,6 @@
 import { useNavigate, Link } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
+import { toast } from 'sonner';
 import VehiculoForm from '../components/VehiculoForm';
 
 export default function VehiculoNuevo() {
@@ -11,6 +12,7 @@ export default function VehiculoNuevo() {
     // Simular guardado
     await new Promise(resolve => setTimeout(resolve, 1000));
     
+    toast.success('Vehículo registrado correctamente');
     // Al terminar, volvemos a la lista de vehículos
     navigate('/vehiculos');
   };

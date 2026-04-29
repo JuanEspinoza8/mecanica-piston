@@ -1,5 +1,6 @@
 import { useNavigate, Link } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
+import { toast } from 'sonner';
 import ClienteForm from '../components/ClienteForm';
 
 export default function ClienteNuevo() {
@@ -13,6 +14,7 @@ export default function ClienteNuevo() {
     // Por ahora, simulamos que tarda 1 segundo en guardar y volvemos a la lista.
     await new Promise(resolve => setTimeout(resolve, 1000));
     
+    toast.success('Cliente registrado correctamente');
     // Al terminar, volvemos a la pantalla de clientes
     navigate('/clientes');
   };
