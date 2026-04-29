@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Search, Plus, ClipboardList, Filter, ChevronRight } from 'lucide-react';
+import { Search, Plus, Filter, ChevronRight, LayoutList, LayoutGrid, Clock, AlertCircle, CheckCircle2 } from 'lucide-react';
 
 export default function OrdenesList() {
-  const [ordenes] = useState([
+  const [ordenes, setOrdenes] = useState([
     { id: 'ORD-001', cliente: 'Juan Pérez', vehiculo: 'Ford Fiesta (AB123CD)', estado: 'En proceso', fecha: '28/04/2026', total: '$15.000' },
     { id: 'ORD-002', cliente: 'María Gómez', vehiculo: 'Toyota Hilux (AA000BB)', estado: 'Terminado', fecha: '27/04/2026', total: '$45.000' },
     { id: 'ORD-003', cliente: 'Carlos López', vehiculo: 'VW Gol Trend (AC999XX)', estado: 'Esperando repuesto', fecha: '26/04/2026', total: '-' },
@@ -12,6 +12,10 @@ export default function OrdenesList() {
 
   const [filtroTexto, setFiltroTexto] = useState('');
   const [filtroEstado, setFiltroEstado] = useState('Todas');
+  const [vista, setVista] = useState('lista'); // 'lista' o 'tablero'
+  
+  // Estado para saber qué elemento se está arrastrando
+  const [draggedItem, setDraggedItem] = useState(null);
 
   const ordenesFiltradas = ordenes.filter(orden => {
     const coincideTexto = 
@@ -38,9 +42,58 @@ export default function OrdenesList() {
     }
   };
 
+  const getEstadoIcon = (estado) => {
+    switch(estado) {
+      case 'Terminado': return <CheckCircle2 className="w-5 h-5 text-green-600 dark:text-green-400" />;
+      case 'En proceso': return <Clock className="w-5 h-5 text-blue-600 dark:text-blue-400" />;
+      case 'Esperando repuesto': return <AlertCircle className="w-5 h-5 text-orange-600 dark:text-orange-400" />;
+      default: return null;
+    }
+  };
+
+  // --- LÓGICA DE DRAG & DROP ---
+  const handleDragStart = (e, ordenId) => {
+    setDraggedItem(ordenId);
+    e.dataTransfer.effectAllowed = 'move';
+    // Hacemos la tarjeta un poco transparente mientras se arrastra
+    setTimeout(() => {
+      e.target.style.opacity = '0.5';
+    }, 0);
+  };
+
+  const handleDragEnd = (e) => {
+    e.target.style.opacity = '1';
+    setDraggedItem(null);
+  };
+
+  const handleDragOver = (e) => {
+    e.preventDefault(); // Necesario para permitir el "Drop"
+    e.dataTransfer.dropEffect = 'move';
+  };
+
+  const handleDrop = (e, nuevoEstado) => {
+    e.preventDefault();
+    if (!draggedItem) return;
+
+    // Actualizamos el estado de la orden arrastrada
+    setOrdenes(prevOrdenes => 
+      prevOrdenes.map(ord => 
+        ord.id === draggedItem ? { ...ord, estado: nuevoEstado } : ord
+      )
+    );
+    setDraggedItem(null);
+  };
+
+  const columnasKanban = [
+    { id: 'En proceso', titulo: 'En Proceso' },
+    { id: 'Esperando repuesto', titulo: 'Esperando Repuesto' },
+    { id: 'Terminado', titulo: 'Terminado' }
+  ];
+
   return (
     <div className="space-y-6 pb-6">
       
+      {/* Cabecera Principal */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-neutral-900 dark:text-white">Órdenes de Trabajo</h1>
@@ -56,33 +109,55 @@ export default function OrdenesList() {
         </Link>
       </div>
 
-      <div className="flex flex-col md:flex-row gap-4">
-        <div className="relative flex-1">
+      {/* Barra de Controles (Buscador, Filtros, Toggle Vista) */}
+      <div className="flex flex-col md:flex-row gap-4 items-center">
+        
+        <div className="relative flex-1 w-full">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-400 dark:text-red-500" />
           <input 
             type="text" 
-            placeholder="Buscar por cliente, patente o # de orden..." 
+            placeholder="Buscar por cliente, patente o #..." 
             className="w-full bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 text-neutral-800 dark:text-white rounded-xl pl-12 pr-4 py-3 focus:outline-none focus:border-red-500 dark:focus:border-red-500 transition-all shadow-sm"
             value={filtroTexto}
             onChange={(e) => setFiltroTexto(e.target.value)}
           />
         </div>
         
-        <div className="flex bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-xl p-1 shadow-sm shrink-0 overflow-x-auto">
-          {['Todas', 'Abiertas', 'Terminadas'].map(estado => (
+        <div className="flex w-full md:w-auto items-center gap-3">
+          <div className="flex flex-1 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-xl p-1 shadow-sm overflow-x-auto">
+            {['Todas', 'Abiertas', 'Terminadas'].map(estado => (
+              <button
+                key={estado}
+                onClick={() => setFiltroEstado(estado)}
+                className={`flex-1 md:flex-none px-4 py-2 text-sm font-semibold rounded-lg whitespace-nowrap transition-all ${
+                  filtroEstado === estado 
+                    ? 'bg-black dark:bg-red-600 text-white shadow-md' 
+                    : 'text-neutral-500 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800'
+                }`}
+              >
+                {estado}
+              </button>
+            ))}
+          </div>
+
+          <div className="flex bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-xl p-1 shadow-sm shrink-0">
             <button
-              key={estado}
-              onClick={() => setFiltroEstado(estado)}
-              className={`px-4 py-2 text-sm font-semibold rounded-lg whitespace-nowrap transition-all ${
-                filtroEstado === estado 
-                  ? 'bg-black dark:bg-red-600 text-white shadow-md' 
-                  : 'text-neutral-500 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800'
-              }`}
+              onClick={() => setVista('lista')}
+              className={`p-2 rounded-lg transition-all ${vista === 'lista' ? 'bg-neutral-100 dark:bg-neutral-800 text-neutral-900 dark:text-white' : 'text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300'}`}
+              title="Vista Lista"
             >
-              {estado}
+              <LayoutList className="w-5 h-5" />
             </button>
-          ))}
+            <button
+              onClick={() => setVista('tablero')}
+              className={`p-2 rounded-lg transition-all ${vista === 'tablero' ? 'bg-neutral-100 dark:bg-neutral-800 text-neutral-900 dark:text-white' : 'text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300'}`}
+              title="Vista Tablero"
+            >
+              <LayoutGrid className="w-5 h-5" />
+            </button>
+          </div>
         </div>
+
       </div>
 
       {ordenesFiltradas.length === 0 ? (
@@ -95,8 +170,10 @@ export default function OrdenesList() {
             Prueba cambiando los filtros de estado o la palabra clave de búsqueda.
           </p>
         </div>
-      ) : (
-        <div className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl overflow-hidden shadow-sm">
+      ) : vista === 'lista' ? (
+        
+        /* --- VISTA DE LISTA TRADICIONAL --- */
+        <div className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl overflow-hidden shadow-sm animate-in fade-in slide-in-from-bottom-4 duration-300">
           <div className="hidden md:grid grid-cols-12 gap-4 p-4 bg-neutral-50 dark:bg-neutral-950 border-b border-neutral-200 dark:border-neutral-800 text-xs font-bold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider">
             <div className="col-span-2">Orden / Fecha</div>
             <div className="col-span-3">Cliente</div>
@@ -143,7 +220,74 @@ export default function OrdenesList() {
             ))}
           </div>
         </div>
+
+      ) : (
+
+        /* --- VISTA DE TABLERO KANBAN --- */
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 animate-in fade-in zoom-in-95 duration-300">
+          {columnasKanban.map(col => {
+            const ordenesColumna = ordenesFiltradas.filter(o => o.estado === col.id);
+            
+            return (
+              <div 
+                key={col.id}
+                onDragOver={handleDragOver}
+                onDrop={(e) => handleDrop(e, col.id)}
+                className="bg-neutral-100/50 dark:bg-neutral-900/30 border border-neutral-200 dark:border-neutral-800 rounded-3xl p-4 flex flex-col h-full min-h-[500px]"
+              >
+                <div className="flex items-center justify-between mb-4 px-2">
+                  <div className="flex items-center gap-2">
+                    {getEstadoIcon(col.id)}
+                    <h3 className="font-bold text-neutral-900 dark:text-white">{col.titulo}</h3>
+                  </div>
+                  <span className="bg-white dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300 text-xs font-bold px-2 py-1 rounded-full shadow-sm border border-neutral-200 dark:border-neutral-700">
+                    {ordenesColumna.length}
+                  </span>
+                </div>
+
+                <div className="flex-1 space-y-3">
+                  {ordenesColumna.map(orden => (
+                    <div
+                      key={orden.id}
+                      draggable
+                      onDragStart={(e) => handleDragStart(e, orden.id)}
+                      onDragEnd={handleDragEnd}
+                      className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 p-4 rounded-2xl shadow-sm hover:shadow-md hover:border-red-300 dark:hover:border-red-900 transition-all cursor-grab active:cursor-grabbing relative group"
+                    >
+                      <div className="flex justify-between items-start mb-2">
+                        <Link to={`/ordenes/${orden.id}`} className="font-black text-neutral-900 dark:text-white hover:text-red-600 transition-colors">
+                          {orden.id}
+                        </Link>
+                        <span className="text-[10px] font-bold text-neutral-400 dark:text-neutral-500 bg-neutral-100 dark:bg-neutral-800 px-2 py-0.5 rounded-full">
+                          {orden.fecha}
+                        </span>
+                      </div>
+                      
+                      <p className="font-semibold text-sm text-neutral-800 dark:text-neutral-200 mb-1">{orden.cliente}</p>
+                      <p className="text-xs text-neutral-500 dark:text-neutral-400 mb-4">{orden.vehiculo}</p>
+                      
+                      <div className="flex items-center justify-between border-t border-neutral-100 dark:border-neutral-800 pt-3">
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${getEstadoColor(orden.estado)}`}>
+                          {orden.estado}
+                        </span>
+                        <span className="font-bold text-neutral-900 dark:text-white text-sm">{orden.total}</span>
+                      </div>
+                    </div>
+                  ))}
+                  
+                  {ordenesColumna.length === 0 && (
+                    <div className="h-24 border-2 border-dashed border-neutral-300 dark:border-neutral-700 rounded-2xl flex items-center justify-center text-neutral-400 dark:text-neutral-500 text-sm font-medium">
+                      Arrastra una orden aquí
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
       )}
+
     </div>
   );
 }

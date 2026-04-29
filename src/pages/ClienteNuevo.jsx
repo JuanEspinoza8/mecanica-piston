@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { toast } from 'sonner';
@@ -5,18 +6,25 @@ import ClienteForm from '../components/ClienteForm';
 
 export default function ClienteNuevo() {
   const navigate = useNavigate();
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Función que se ejecuta cuando el formulario es válido y se envía
   const onSubmit = async (data) => {
+    setIsSubmitting(true);
     console.log("Datos recibidos del formulario:", data);
     
-    // Aquí es donde Juan conectará con Supabase para guardar el cliente real.
-    // Por ahora, simulamos que tarda 1 segundo en guardar y volvemos a la lista.
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    toast.success('Cliente registrado correctamente');
-    // Al terminar, volvemos a la pantalla de clientes
-    navigate('/clientes');
+    try {
+      // Aquí es donde Juan conectará con Supabase para guardar el cliente real.
+      // Por ahora, simulamos que tarda 1 segundo en guardar y volvemos a la lista.
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      toast.success('Cliente registrado correctamente');
+      navigate('/clientes');
+    } catch (error) {
+      toast.error('Error al guardar el cliente');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -37,7 +45,7 @@ export default function ClienteNuevo() {
       </div>
 
       {/* Componente del Formulario */}
-      <ClienteForm onSubmit={onSubmit} isSubmitting={false} />
+      <ClienteForm onSubmit={onSubmit} isSubmitting={isSubmitting} />
       
     </div>
   );

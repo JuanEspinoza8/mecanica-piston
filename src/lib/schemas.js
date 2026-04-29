@@ -2,25 +2,45 @@ import { z } from 'zod';
 
 // Esquema de validación para Clientes
 export const clienteSchema = z.object({
-  nombre: z.string().min(2, 'El nombre debe tener al menos 2 caracteres'),
-  telefono: z.string().min(8, 'El teléfono debe ser válido (ej: 11 1234-5678)'),
-  email: z.string().email('El correo electrónico no es válido').optional().or(z.literal('')),
-  direccion: z.string().optional(),
+  nombre: z.string()
+    .min(2, 'El nombre debe tener al menos 2 caracteres')
+    .max(100, 'El nombre es demasiado largo')
+    .regex(/^[a-záéíóúüñA-ZÁÉÍÓÚÜÑ\s]+$/, 'El nombre solo puede contener letras'),
+  telefono: z.string()
+    .min(8, 'El teléfono debe tener al menos 8 dígitos')
+    .max(20, 'Teléfono demasiado largo')
+    .regex(/^[\d\s\-\+\(\)]+$/, 'Formato de teléfono inválido'),
+  email: z.string()
+    .email('El correo electrónico no es válido')
+    .optional()
+    .or(z.literal('')),
+  direccion: z.string().max(200, 'Dirección demasiado larga').optional(),
 });
 
 // Esquema de validación para Órdenes
 export const ordenSchema = z.object({
   clienteId: z.string().min(1, 'Debe seleccionar un cliente'),
   vehiculoId: z.string().min(1, 'Debe seleccionar un vehículo'),
-  sintoma: z.string().min(10, 'Por favor describa el problema con más detalle (mínimo 10 caracteres)'),
+  sintoma: z.string()
+    .min(10, 'Describa el problema con más detalle (mínimo 10 caracteres)')
+    .max(500, 'La descripción es demasiado larga'),
 });
 
 // Esquema de validación para Vehículos
 export const vehiculoSchema = z.object({
-  patente: z.string().min(6, 'La patente debe tener al menos 6 caracteres').max(8, 'Patente muy larga'),
-  marca: z.string().min(2, 'La marca es obligatoria'),
-  modelo: z.string().min(2, 'El modelo es obligatorio'),
-  año: z.coerce.number().min(1950, 'Año inválido').max(new Date().getFullYear() + 1, 'Año inválido'),
-  color: z.string().optional(),
+  patente: z.string()
+    .min(6, 'La patente debe tener al menos 6 caracteres')
+    .max(10, 'Patente demasiado larga')
+    .regex(
+      /^([A-Za-z]{3}\s?\d{3}|[A-Za-z]{2}\s?\d{3}\s?[A-Za-z]{2})$/,
+      'Formato inválido. Usá AAA 123 o AA 123 BB'
+    ),
+  marca: z.string().min(2, 'La marca es obligatoria').max(30, 'Marca demasiado larga'),
+  modelo: z.string().min(1, 'El modelo es obligatorio').max(50, 'Modelo demasiado largo'),
+  año: z.coerce.number()
+    .min(1950, 'El año debe ser mayor a 1950')
+    .max(new Date().getFullYear() + 1, `El año no puede ser mayor a ${new Date().getFullYear() + 1}`),
+  color: z.string().max(30, 'Color demasiado largo').optional(),
   clienteId: z.string().min(1, 'Debe asignar el vehículo a un cliente'),
 });
+
