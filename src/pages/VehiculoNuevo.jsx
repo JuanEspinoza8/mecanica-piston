@@ -23,13 +23,13 @@ export default function VehiculoNuevo() {
       <div className="flex items-center space-x-4">
         <Link 
           to="/vehiculos"
-          className="p-2 rounded-full hover:bg-neutral-200 transition-colors text-neutral-600"
+          className="p-2 rounded-full hover:bg-neutral-200 dark:hover:bg-neutral-800 transition-colors text-neutral-600 dark:text-neutral-400"
         >
           <ArrowLeft className="w-6 h-6" />
         </Link>
         <div>
-          <h1 className="text-2xl font-bold text-neutral-900">Registrar Vehículo</h1>
-          <p className="text-neutral-500">Añade un nuevo auto a la flota de un cliente.</p>
+          <h1 className="text-2xl font-bold text-neutral-900 dark:text-white">Registrar Vehículo</h1>
+          <p className="text-neutral-500 dark:text-neutral-400">Añade un nuevo auto a la flota de un cliente.</p>
         </div>
       </div>
 

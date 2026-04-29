@@ -1,81 +1,63 @@
-import { Users, ClipboardList, Wallet, ArrowRight, Clock } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Activity, Users, CarFront, Wrench, AlertCircle } from 'lucide-react';
 
 export default function Dashboard() {
-  // Datos simulados (mock data) por ahora
   const stats = [
-    { title: 'Total Clientes', value: '124', icon: Users, color: 'text-blue-500', bg: 'bg-blue-500/10' },
-    { title: 'Órdenes Abiertas', value: '8', icon: ClipboardList, color: 'text-orange-500', bg: 'bg-orange-500/10' },
-    { title: 'Cobros Pendientes', value: '$45.200', icon: Wallet, color: 'text-red-500', bg: 'bg-red-500/10' },
-  ];
-
-  const ultimasOrdenes = [
-    { id: 'ORD-001', vehiculo: 'Ford Fiesta (AB123CD)', estado: 'En proceso', fecha: 'Hoy' },
-    { id: 'ORD-002', vehiculo: 'Toyota Hilux (AA000BB)', estado: 'Terminado', fecha: 'Ayer' },
-    { id: 'ORD-003', vehiculo: 'VW Gol Trend (AC999XX)', estado: 'Esperando repuesto', fecha: 'Hace 2 días' },
+    { label: 'Órdenes Activas', value: '12', icon: Wrench, color: 'text-blue-600 dark:text-blue-400', bg: 'bg-blue-100 dark:bg-blue-900/30' },
+    { label: 'Vehículos en Taller', value: '8', icon: CarFront, color: 'text-orange-600 dark:text-orange-400', bg: 'bg-orange-100 dark:bg-orange-900/30' },
+    { label: 'Clientes Registrados', value: '156', icon: Users, color: 'text-green-600 dark:text-green-400', bg: 'bg-green-100 dark:bg-green-900/30' },
+    { label: 'Ingresos del Día', value: '$45.000', icon: Activity, color: 'text-purple-600 dark:text-purple-400', bg: 'bg-purple-100 dark:bg-purple-900/30' },
   ];
 
   return (
     <div className="space-y-6 pb-6">
-      
-      {/* Saludo */}
-      <div>
-        <h1 className="text-2xl font-bold text-neutral-900">Hola, Lucas 👋</h1>
-        <p className="text-neutral-500">Aquí tienes el resumen de tu taller mecánico.</p>
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold text-neutral-900 dark:text-white">Panel de Control</h1>
       </div>
 
-      {/* Grid de Métricas (1 columna en celular, 3 en computadora) */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-        {stats.map((stat, i) => {
+      {/* Grid de Estadísticas */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {stats.map((stat, idx) => {
           const Icon = stat.icon;
           return (
-            <div key={i} className="bg-white rounded-2xl p-5 shadow-sm border border-neutral-100 flex items-center hover:shadow-md transition-shadow">
-              <div className={`p-4 rounded-xl ${stat.bg} ${stat.color} mr-4 shrink-0`}>
+            <div key={idx} className="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 p-6 flex items-center shadow-sm hover:border-red-500 dark:hover:border-red-500/50 transition-colors">
+              <div className={`p-4 rounded-xl ${stat.bg} ${stat.color} mr-4`}>
                 <Icon className="w-6 h-6" />
               </div>
-              <div className="overflow-hidden">
-                <p className="text-sm font-medium text-neutral-500 truncate">{stat.title}</p>
-                <p className="text-2xl font-black text-neutral-900 truncate">{stat.value}</p>
+              <div>
+                <p className="text-sm font-medium text-neutral-500 dark:text-neutral-400">{stat.label}</p>
+                <p className="text-2xl font-black text-neutral-900 dark:text-white">{stat.value}</p>
               </div>
             </div>
           );
         })}
       </div>
 
-      {/* Sección de Últimas Órdenes */}
-      <div className="bg-white rounded-2xl shadow-sm border border-neutral-100 overflow-hidden">
-        <div className="flex items-center justify-between p-4 md:p-5 border-b border-neutral-100">
-          <h2 className="text-lg font-bold text-neutral-900">Últimas Órdenes de Trabajo</h2>
-          <Link to="/ordenes" className="text-sm font-medium text-red-600 hover:text-red-700 flex items-center shrink-0 ml-4">
-            Ver todas <ArrowRight className="w-4 h-4 ml-1" />
-          </Link>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Actividad Reciente */}
+        <div className="lg:col-span-2 bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 p-6 shadow-sm">
+          <h2 className="text-lg font-bold text-neutral-900 dark:text-white mb-4">Actividad Reciente</h2>
+          <div className="flex flex-col items-center justify-center py-10 text-center border border-dashed border-neutral-200 dark:border-neutral-800 rounded-xl">
+            <AlertCircle className="w-12 h-12 text-neutral-300 dark:text-neutral-700 mb-3" />
+            <p className="text-neutral-500 dark:text-neutral-400 font-medium">No hay actividad reciente registrada hoy.</p>
+          </div>
         </div>
-        
-        <div className="divide-y divide-neutral-100">
-          {ultimasOrdenes.map((orden, i) => (
-            <div key={i} className="flex flex-col sm:flex-row sm:items-center justify-between p-4 md:p-5 hover:bg-neutral-50 transition-colors gap-3">
-              <div className="flex items-center overflow-hidden">
-                <div className="bg-neutral-100 p-3 rounded-lg mr-4 shrink-0">
-                  <Clock className="w-5 h-5 text-neutral-500" />
-                </div>
-                <div className="overflow-hidden">
-                  <p className="font-bold text-neutral-900 truncate">{orden.vehiculo}</p>
-                  <p className="text-xs text-neutral-500 truncate">{orden.id} • {orden.fecha}</p>
-                </div>
+
+        {/* Alertas */}
+        <div className="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 p-6 shadow-sm">
+          <h2 className="text-lg font-bold text-neutral-900 dark:text-white mb-4">Alertas del Taller</h2>
+          <div className="space-y-3">
+            <div className="bg-red-50 dark:bg-red-950/20 border border-red-100 dark:border-red-900/50 p-4 rounded-xl flex items-start">
+              <div className="bg-red-100 dark:bg-red-900/50 p-2 rounded-lg mr-3 mt-0.5">
+                <Wrench className="w-4 h-4 text-red-600 dark:text-red-400" />
               </div>
-              
-              <span className={`self-start sm:self-auto px-3 py-1 rounded-full text-xs font-semibold shrink-0 ${
-                orden.estado === 'Terminado' ? 'bg-green-100 text-green-700' :
-                orden.estado === 'En proceso' ? 'bg-blue-100 text-blue-700' :
-                'bg-orange-100 text-orange-700'
-              }`}>
-                {orden.estado}
-              </span>
+              <div>
+                <p className="font-bold text-red-800 dark:text-red-400 text-sm">Falta de Repuestos</p>
+                <p className="text-xs text-red-600 dark:text-red-300 mt-1">Orden #102 detenida por falta de pastillas de freno.</p>
+              </div>
             </div>
-          ))}
+          </div>
         </div>
       </div>
-
     </div>
   );
 }
