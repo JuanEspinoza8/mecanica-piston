@@ -1,32 +1,50 @@
-import { useParams, Link } from 'react-router-dom';
-import { ArrowLeft, Phone, Mail, MapPin, CarFront, Calendar, Edit3, Trash2 } from 'lucide-react';
+import { useParams, Link, useNavigate } from 'react-router-dom';
+import { ArrowLeft, Phone, Mail, MapPin, CarFront, Calendar, Edit3, Trash2, Loader2, AlertCircle } from 'lucide-react';
 import { useState } from 'react';
+import { format } from 'date-fns';
+import { toast } from 'sonner';
 import ConfirmModal from '../components/ConfirmModal';
+import { useCliente, useDeleteCliente } from '../hooks/useClientes';
 
 export default function ClienteDetail() {
   const { id } = useParams();
+  const navigate = useNavigate();
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const { data: cliente, isLoading, isError } = useCliente(id);
+  const deleteClienteMutation = useDeleteCliente();
 
-  // Mock data por ahora
-  const cliente = {
-    id: id || '1',
-    nombre: 'Juan Pérez',
-    telefono: '11 1234-5678',
-    email: 'juan.perez@email.com',
-    direccion: 'Av. Corrientes 1234, CABA',
-    fechaAlta: '15/03/2025'
+  const vehiculos = []; // Se implementará en Fase 3
+
+  const handleDelete = async () => {
+    try {
+      await deleteClienteMutation.mutateAsync(id);
+      setIsDeleteModalOpen(false);
+      toast.success('Cliente eliminado permanentemente');
+      navigate('/clientes');
+    } catch (error) {
+      toast.error('Error al eliminar cliente: ' + error.message);
+      setIsDeleteModalOpen(false);
+    }
   };
 
-  const vehiculos = [
-    { id: '101', patente: 'AB 123 CD', marca: 'Ford', modelo: 'Fiesta', año: 2018 },
-    { id: '102', patente: 'AA 000 BB', marca: 'Toyota', modelo: 'Hilux', año: 2016 },
-  ];
+  if (isLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 text-neutral-500">
+        <Loader2 className="w-10 h-10 animate-spin mb-4" />
+        <p>Cargando información del cliente...</p>
+      </div>
+    );
+  }
 
-  const handleDelete = () => {
-    console.log("Eliminando cliente...");
-    setIsDeleteModalOpen(false);
-    // Aquí iría la redirección después de borrar
-  };
+  if (isError || !cliente) {
+    return (
+      <div className="bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 p-6 rounded-2xl flex flex-col items-center text-center">
+        <AlertCircle className="w-10 h-10 mb-2" />
+        <p className="font-semibold">Cliente no encontrado</p>
+        <Link to="/clientes" className="mt-4 text-sm underline hover:text-red-800">Volver al listado</Link>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-5xl mx-auto space-y-6 pb-6">
@@ -91,7 +109,9 @@ export default function ClienteDetail() {
               <Calendar className="w-5 h-5 text-neutral-400 dark:text-red-500 mr-3 mt-0.5" />
               <div>
                 <p className="text-xs font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider">Cliente desde</p>
-                <p className="font-medium text-neutral-900 dark:text-white">{cliente.fechaAlta}</p>
+                <p className="font-medium text-neutral-900 dark:text-white">
+                  {cliente.created_at ? format(new Date(cliente.created_at), 'dd/MM/yyyy') : 'N/A'}
+                </p>
               </div>
             </div>
           </div>
@@ -131,7 +151,8 @@ export default function ClienteDetail() {
         isOpen={isDeleteModalOpen}
         onClose={() => setIsDeleteModalOpen(false)}
         onConfirm={handleDelete}
-        titulo="¿Eliminar a Juan Pérez?"
+        isLoading={deleteClienteMutation.isPending}
+        titulo={`¿Eliminar a ${cliente.nombre}?`}
         mensaje="Esta acción borrará permanentemente el perfil del cliente y desvinculará todos sus vehículos registrados. Esta acción no se puede deshacer."
         textoConfirmar="Sí, eliminar cliente"
       />
