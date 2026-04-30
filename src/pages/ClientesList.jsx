@@ -1,19 +1,15 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Search, Plus, User, Phone, MapPin, Filter } from 'lucide-react';
+import { Search, Plus, User, Phone, MapPin, Filter, Loader2, AlertCircle } from 'lucide-react';
+import { useClientes } from '../hooks/useClientes';
 
 export default function ClientesList() {
-  const [clientes] = useState([
-    { id: 1, nombre: 'Juan Pérez', telefono: '11 1234-5678', direccion: 'Av. Corrientes 1234' },
-    { id: 2, nombre: 'María Gómez', telefono: '11 9876-5432', direccion: 'Calle Falsa 123' },
-    { id: 3, nombre: 'Carlos López', telefono: '11 5555-4444', direccion: 'Av. Cabildo 456' },
-  ]);
-
+  const { data: clientes = [], isLoading, isError } = useClientes();
   const [filtro, setFiltro] = useState('');
 
   const clientesFiltrados = clientes.filter(cliente => 
-    cliente.nombre.toLowerCase().includes(filtro.toLowerCase()) || 
-    cliente.telefono.includes(filtro)
+    cliente.nombre?.toLowerCase().includes(filtro.toLowerCase()) || 
+    cliente.telefono?.includes(filtro)
   );
 
   return (
@@ -44,7 +40,17 @@ export default function ClientesList() {
         />
       </div>
 
-      {clientesFiltrados.length === 0 ? (
+      {isLoading ? (
+        <div className="flex flex-col items-center justify-center py-20 text-neutral-500">
+          <Loader2 className="w-10 h-10 animate-spin mb-4" />
+          <p>Cargando directorio de clientes...</p>
+        </div>
+      ) : isError ? (
+        <div className="bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 p-6 rounded-2xl flex flex-col items-center text-center">
+          <AlertCircle className="w-10 h-10 mb-2" />
+          <p className="font-semibold">Ocurrió un error al cargar los clientes</p>
+        </div>
+      ) : clientesFiltrados.length === 0 ? (
         <div className="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 p-10 text-center flex flex-col items-center">
           <div className="bg-neutral-100 dark:bg-neutral-800 p-4 rounded-full mb-4">
             <Filter className="w-10 h-10 text-neutral-400 dark:text-neutral-500" />

@@ -3,27 +3,20 @@ import { useNavigate, Link } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { toast } from 'sonner';
 import ClienteForm from '../components/ClienteForm';
+import { useCreateCliente } from '../hooks/useClientes';
 
 export default function ClienteNuevo() {
   const navigate = useNavigate();
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const createClienteMutation = useCreateCliente();
 
   // Función que se ejecuta cuando el formulario es válido y se envía
   const onSubmit = async (data) => {
-    setIsSubmitting(true);
-    console.log("Datos recibidos del formulario:", data);
-    
     try {
-      // Aquí es donde Juan conectará con Supabase para guardar el cliente real.
-      // Por ahora, simulamos que tarda 1 segundo en guardar y volvemos a la lista.
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
+      await createClienteMutation.mutateAsync(data);
       toast.success('Cliente registrado correctamente');
       navigate('/clientes');
     } catch (error) {
-      toast.error('Error al guardar el cliente');
-    } finally {
-      setIsSubmitting(false);
+      toast.error('Error al guardar el cliente: ' + error.message);
     }
   };
 
@@ -45,7 +38,7 @@ export default function ClienteNuevo() {
       </div>
 
       {/* Componente del Formulario */}
-      <ClienteForm onSubmit={onSubmit} isSubmitting={isSubmitting} />
+      <ClienteForm onSubmit={onSubmit} isSubmitting={createClienteMutation.isPending} />
       
     </div>
   );
