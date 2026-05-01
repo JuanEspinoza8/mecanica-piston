@@ -12,6 +12,7 @@ export default function Login() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [showSplash, setShowSplash] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -23,18 +24,75 @@ export default function Login() {
 
     setIsLoading(true);
 
-    // Simular validación (Juan reemplazará con supabase.auth.signInWithPassword)
+    // Simular validación
     await new Promise(resolve => setTimeout(resolve, 1200));
 
     // Simulamos login exitoso
     login({ email, nombre: email.split('@')[0] });
     setIsLoading(false);
     
+    // Mostrar splash screen antes del dashboard
+    setShowSplash(true);
+    
+    await new Promise(resolve => setTimeout(resolve, 2800));
+    
     toast.success('¡Bienvenido al taller!');
     navigate('/');
   };
 
-  // ===================== LOGIN SCREEN (Split Layout) =====================
+  // ===================== SPLASH SCREEN =====================
+  if (showSplash) {
+    return (
+      <div className="fixed inset-0 bg-neutral-950 flex flex-col items-center justify-center z-[200] overflow-hidden">
+        
+        {/* Partículas decorativas */}
+        <div className="absolute inset-0 overflow-hidden pointer-events-none">
+          <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-red-600/5 rounded-full blur-3xl animate-pulse"></div>
+          <div className="absolute bottom-1/4 right-1/4 w-64 h-64 bg-red-500/10 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '1s' }}></div>
+        </div>
+
+        {/* Spinner animado sin logo */}
+        <div className="relative mb-8">
+          <div className="w-32 h-32 border-4 border-red-600/30 rounded-full flex items-center justify-center animate-spin" style={{ animationDuration: '3s' }}>
+            <div className="w-28 h-28 border-4 border-transparent border-t-red-600 rounded-full"></div>
+          </div>
+        </div>
+
+        {/* Texto animado */}
+        <h1 className="text-4xl font-black text-white tracking-tight mb-2 animate-in fade-in slide-in-from-bottom-4 duration-700" style={{ fontFamily: "'Orbitron', sans-serif" }}>
+          MECÁNICA PISTÓN
+        </h1>
+        <p className="text-neutral-500 text-sm tracking-[0.3em] uppercase animate-in fade-in slide-in-from-bottom-4 duration-700" style={{ animationDelay: '300ms' }}>
+          Preparando el taller...
+        </p>
+
+        {/* Barra de progreso */}
+        <div className="w-48 h-1 bg-neutral-800 rounded-full mt-8 overflow-hidden animate-in fade-in duration-500" style={{ animationDelay: '600ms' }}>
+          <div className="h-full bg-gradient-to-r from-red-700 to-red-500 rounded-full animate-loading-bar"></div>
+        </div>
+
+        {/* SVG del auto en movimiento */}
+        <div className="absolute bottom-16 w-full overflow-hidden">
+          <div className="animate-drive-car">
+            <svg width="120" height="50" viewBox="0 0 120 50" className="text-red-600/40">
+              <path d="M20,35 L25,20 L45,15 L55,10 L80,10 L95,15 L100,25 L105,30 L105,35 Z" fill="currentColor" />
+              <circle cx="35" cy="40" r="7" fill="none" stroke="currentColor" strokeWidth="3" />
+              <circle cx="35" cy="40" r="3" fill="currentColor" />
+              <circle cx="90" cy="40" r="7" fill="none" stroke="currentColor" strokeWidth="3" />
+              <circle cx="90" cy="40" r="3" fill="currentColor" />
+              <rect x="55" y="15" width="15" height="10" rx="2" fill="currentColor" opacity="0.5" />
+              <rect x="38" y="17" width="12" height="8" rx="2" fill="currentColor" opacity="0.5" />
+              {/* Humo del escape */}
+              <circle cx="10" cy="32" r="4" fill="currentColor" opacity="0.15" className="animate-pulse" />
+              <circle cx="3" cy="28" r="3" fill="currentColor" opacity="0.1" className="animate-pulse" style={{ animationDelay: '200ms' }} />
+              <circle cx="-3" cy="25" r="2" fill="currentColor" opacity="0.05" className="animate-pulse" style={{ animationDelay: '400ms' }} />
+            </svg>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // ===================== LOGIN SCREEN (Split Layout) =====================
   return (
     <div className="fixed inset-0 bg-neutral-950 flex overflow-hidden">
