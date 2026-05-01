@@ -111,9 +111,9 @@ export default function Login() {
           <div className="text-center mb-10">
             <div className="inline-flex items-center justify-center mb-4 lg:hidden">
               <img 
-                src="/logo.png" 
+                src="/logo-dark.png" 
                 alt="Mecánica Pistón" 
-                className="w-24 h-24 object-contain drop-shadow-[0_0_20px_rgba(239,68,68,0.4)]" 
+                className="w-24 h-24 object-contain drop-shadow-[0_0_20px_rgba(239,68,68,0.4)] mix-blend-lighten" 
               />
             </div>
             
