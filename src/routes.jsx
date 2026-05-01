@@ -11,6 +11,7 @@ const OrdenesList = lazy(() => import('./pages/OrdenesList'))
 const OrdenNueva = lazy(() => import('./pages/OrdenNueva'))
 const OrdenDetail = lazy(() => import('./pages/OrdenDetail'))
 const NotFound = lazy(() => import('./pages/NotFound'))
+const SearchResults = lazy(() => import('./pages/SearchResults'))
 
 export const routes = [
   {
@@ -52,6 +53,10 @@ export const routes = [
   {
     path: '/ordenes/:id',
     element: <OrdenDetail />,
+  },
+  {
+    path: '/buscar',
+    element: <SearchResults />,
   },
   {
     path: '*',

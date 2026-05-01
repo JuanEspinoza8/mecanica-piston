@@ -1,18 +1,18 @@
 import { Link, useLocation } from 'react-router-dom';
-import { Home, Users, Plus, ClipboardList, CarFront } from 'lucide-react';
+import { Home, Users, Plus, ClipboardList, CarFront, Search } from 'lucide-react';
 
 export default function BottomNav() {
   const location = useLocation();
 
   return (
     <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-black border-t border-neutral-900 pb-safe">
-      <div className="flex justify-around items-center h-16 px-2 relative">
+      <div className="flex justify-around items-center h-16 px-1 relative">
         
         <NavItem path="/" icon={Home} label="Inicio" currentPath={location.pathname} />
-        <NavItem path="/clientes" icon={Users} label="Clientes" currentPath={location.pathname} />
+        <NavItem path="/buscar" icon={Search} label="Buscar" currentPath={location.pathname} />
         
         {/* Botón Central Destacado (Nueva Orden) */}
-        <div className="flex flex-col items-center justify-center w-14 shrink-0">
+        <div className="flex flex-col items-center justify-center w-12 shrink-0">
           <Link 
             to="/ordenes/nueva" 
             className="absolute -top-6 flex items-center justify-center h-14 w-14 rounded-full bg-gradient-to-tr from-red-600 to-red-700 shadow-[0_4px_15px_rgba(220,38,38,0.5)] text-white transform transition-transform active:scale-95 border-4 border-black"
@@ -23,8 +23,8 @@ export default function BottomNav() {
           <span className="text-[10px] font-medium tracking-wide text-neutral-500 mt-8">Nueva</span>
         </div>
         
+        <NavItem path="/clientes" icon={Users} label="Clientes" currentPath={location.pathname} />
         <NavItem path="/ordenes" icon={ClipboardList} label="Órdenes" currentPath={location.pathname} />
-        <NavItem path="/vehiculos" icon={CarFront} label="Vehículos" currentPath={location.pathname} />
 
       </div>
     </nav>

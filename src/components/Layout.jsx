@@ -115,7 +115,7 @@ export default function Layout({ children }) {
             </button>
             {/* Botón Buscar Mobile */}
             <button 
-              onClick={openSearch}
+              onClick={() => navigate('/buscar')}
               className="p-2 text-neutral-400 hover:text-white transition-colors mr-2"
             >
               <Search className="w-5 h-5" />
