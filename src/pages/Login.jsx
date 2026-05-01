@@ -205,42 +205,23 @@ export default function Login() {
 
         </div>
 
-        {/* Línea divisoria vertical con brillo rojo */}
-        <div className="hidden lg:block absolute right-0 top-0 h-full w-px bg-gradient-to-b from-transparent via-red-600/30 to-transparent"></div>
       </div>
 
       {/* ===== LADO DERECHO: Logo del Pistón (solo desktop) ===== */}
       <div className="hidden lg:flex w-1/2 items-center justify-center relative overflow-hidden">
         
-        {/* Glow rojo de fondo */}
+        {/* Glow rojo sutil de fondo */}
         <div className="absolute inset-0 pointer-events-none">
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-red-600/8 rounded-full blur-[100px]"></div>
-          <div className="absolute bottom-1/4 right-1/4 w-[300px] h-[300px] bg-red-500/5 rounded-full blur-[80px]"></div>
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-red-600/5 rounded-full blur-[120px]"></div>
         </div>
 
-        {/* Líneas decorativas de fondo */}
-        <div className="absolute inset-0 pointer-events-none opacity-[0.03]">
-          <div className="absolute top-20 left-10 w-32 h-32 border border-white rounded-full"></div>
-          <div className="absolute bottom-32 right-16 w-48 h-48 border border-white rounded-full"></div>
-          <div className="absolute top-1/3 right-1/4 w-20 h-20 border border-white rotate-45"></div>
-        </div>
-
-        {/* Logo del Pistón grande */}
-        <div className="relative">
-          <div className="absolute inset-0 bg-gradient-radial pointer-events-none z-10" 
-               style={{ background: 'radial-gradient(circle, transparent 40%, #0a0a0a 75%)' }}>
-          </div>
-          <img 
-            src="/logo-dark.png" 
-            alt="Mecánica Pistón - Mascota" 
-            className="w-[500px] h-[500px] object-contain hover:scale-105 transition-transform duration-700 ease-out select-none" 
-            draggable="false"
-          />
-        </div>
-
-        {/* Líneas decorativas de taller */}
-        <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-red-600/20 via-transparent to-transparent"></div>
-        <div className="absolute bottom-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-transparent to-red-600/20"></div>
+        {/* Logo del Pistón - mix-blend-mode hace invisible el fondo negro */}
+        <img 
+          src="/logo-dark.png" 
+          alt="Mecánica Pistón - Mascota" 
+          className="w-[500px] h-[500px] object-contain hover:scale-105 transition-transform duration-700 ease-out select-none mix-blend-lighten" 
+          draggable="false"
+        />
       </div>
 
     </div>
