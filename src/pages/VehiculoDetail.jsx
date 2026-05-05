@@ -1,5 +1,6 @@
 import { useParams, Link } from 'react-router-dom';
-import { ArrowLeft, CarFront, User, Calendar, Palette, Hash, ClipboardList, Plus, ChevronRight } from 'lucide-react';
+import { ArrowLeft, CarFront, User, Calendar, Palette, Hash, ClipboardList, Plus, ChevronRight, Activity } from 'lucide-react';
+import HistorialTimeline from '../components/HistorialTimeline';
 
 export default function VehiculoDetail() {
   const { id } = useParams();
@@ -19,6 +20,34 @@ export default function VehiculoDetail() {
   const ordenes = [
     { id: 'ORD-001', fecha: '28/04/2026', estado: 'En proceso', total: '$15.000' },
     { id: 'ORD-009', fecha: '10/01/2026', estado: 'Terminado', total: '$45.000' },
+  ];
+
+  // Mock data del historial de modificaciones
+  const historialMock = [
+    {
+      id: 1,
+      tipo: 'reparacion',
+      titulo: 'Cambio de pastillas de freno',
+      descripcion: 'Se reemplazaron las pastillas delanteras y se purgó el sistema.',
+      fecha: new Date(Date.now() - 1000 * 60 * 60 * 24 * 2).toISOString(), // Hace 2 días
+      usuario: 'Carlos Mecánico'
+    },
+    {
+      id: 2,
+      tipo: 'alerta',
+      titulo: 'Batería con bajo rendimiento',
+      descripcion: 'El test de batería indica que está por debajo del 40% de vida útil.',
+      fecha: new Date(Date.now() - 1000 * 60 * 60 * 24 * 15).toISOString(), // Hace 15 días
+      usuario: 'Lucas'
+    },
+    {
+      id: 3,
+      tipo: 'completado',
+      titulo: 'Servicio de los 50.000km completado',
+      descripcion: 'Cambio de aceite, filtros, revisión de tren delantero y escaneo general.',
+      fecha: new Date(Date.now() - 1000 * 60 * 60 * 24 * 45).toISOString(), // Hace 45 días
+      usuario: 'Carlos Mecánico'
+    }
   ];
 
   const getEstadoBadge = (estado) => {
@@ -123,6 +152,17 @@ export default function VehiculoDetail() {
             </div>
           </div>
         )}
+      </div>
+
+      {/* Historial de Modificaciones (Timeline) */}
+      <div className="mt-8">
+        <div className="flex items-center justify-between mb-4 mt-8">
+          <h3 className="text-xl font-bold text-neutral-900 dark:text-white flex items-center">
+            <Activity className="w-5 h-5 mr-2 text-neutral-500 dark:text-neutral-400" />
+            Línea de Tiempo del Vehículo
+          </h3>
+        </div>
+        <HistorialTimeline historial={historialMock} />
       </div>
 
     </div>

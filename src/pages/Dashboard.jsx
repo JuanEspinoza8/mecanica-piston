@@ -1,4 +1,5 @@
 import { Activity, Users, CarFront, Wrench, AlertCircle } from 'lucide-react';
+import NotasRapidas from '../components/NotasRapidas';
 
 export default function Dashboard() {
   const stats = [
@@ -42,20 +43,26 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Alertas */}
-        <div className="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 p-6 shadow-sm">
-          <h2 className="text-lg font-bold text-neutral-900 dark:text-white mb-4">Alertas del Taller</h2>
-          <div className="space-y-3">
-            <div className="bg-red-50 dark:bg-red-950/20 border border-red-100 dark:border-red-900/50 p-4 rounded-xl flex items-start">
-              <div className="bg-red-100 dark:bg-red-900/50 p-2 rounded-lg mr-3 mt-0.5">
-                <Wrench className="w-4 h-4 text-red-600 dark:text-red-400" />
-              </div>
-              <div>
-                <p className="font-bold text-red-800 dark:text-red-400 text-sm">Falta de Repuestos</p>
-                <p className="text-xs text-red-600 dark:text-red-300 mt-1">Orden #102 detenida por falta de pastillas de freno.</p>
+        {/* Columna Lateral (Alertas + Notas) */}
+        <div className="space-y-6 flex flex-col h-full">
+          {/* Alertas */}
+          <div className="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 p-6 shadow-sm">
+            <h2 className="text-lg font-bold text-neutral-900 dark:text-white mb-4">Alertas del Taller</h2>
+            <div className="space-y-3">
+              <div className="bg-red-50 dark:bg-red-950/20 border border-red-100 dark:border-red-900/50 p-4 rounded-xl flex items-start">
+                <div className="bg-red-100 dark:bg-red-900/50 p-2 rounded-lg mr-3 mt-0.5">
+                  <Wrench className="w-4 h-4 text-red-600 dark:text-red-400" />
+                </div>
+                <div>
+                  <p className="font-bold text-red-800 dark:text-red-400 text-sm">Falta de Repuestos</p>
+                  <p className="text-xs text-red-600 dark:text-red-300 mt-1">Orden #102 detenida por falta de pastillas de freno.</p>
+                </div>
               </div>
             </div>
           </div>
+
+          {/* Notas Rápidas */}
+          <NotasRapidas />
         </div>
       </div>
     </div>

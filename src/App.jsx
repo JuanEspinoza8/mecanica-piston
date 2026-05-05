@@ -6,6 +6,7 @@ import ProtectedRoute from './components/ProtectedRoute'
 import Login from './pages/Login'
 import { Toaster } from 'sonner'
 import useAppStore from './store/useAppStore'
+import ConnectionStatus from './components/ConnectionStatus'
 
 function App() {
   const theme = useAppStore((state) => state.theme);
@@ -20,6 +21,7 @@ function App() {
 
   return (
     <>
+      <ConnectionStatus />
       <Toaster richColors position="top-center" theme={theme} />
       <Routes>
         {/* Ruta pública: Login */}

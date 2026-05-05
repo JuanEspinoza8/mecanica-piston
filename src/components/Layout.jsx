@@ -30,9 +30,9 @@ export default function Layout({ children }) {
         {/* Logo / Nombre de la App */}
         <div className="flex h-24 items-center border-b border-neutral-800 dark:border-red-900/50 px-5 font-bold text-white bg-black dark:bg-black/90">
           <img 
-            src="/logo.png" 
+            src="/logo-dark.png" 
             alt="Pistón Logo" 
-            className="mr-3 h-12 w-12 object-contain mix-blend-screen drop-shadow-[0_0_12px_rgba(239,68,68,0.6)]" 
+            className="mr-3 h-12 w-auto object-contain mix-blend-lighten drop-shadow-[0_0_12px_rgba(239,68,68,0.6)]" 
           />
           <div className="flex flex-col justify-center overflow-hidden">
             <span className="text-sm md:text-base tracking-widest font-extrabold uppercase leading-none text-neutral-100 truncate">
@@ -91,9 +91,9 @@ export default function Layout({ children }) {
           {/* Logo en Mobile */}
           <div className="flex items-center md:hidden overflow-hidden">
             <img 
-              src="/logo.png" 
+              src="/logo-dark.png" 
               alt="Pistón Logo" 
-              className="mr-2 h-10 w-10 object-contain mix-blend-screen drop-shadow-[0_0_8px_rgba(239,68,68,0.5)] shrink-0" 
+              className="mr-2 h-10 w-auto object-contain mix-blend-lighten drop-shadow-[0_0_8px_rgba(239,68,68,0.5)] shrink-0" 
             />
             <div className="flex flex-col justify-center overflow-hidden">
               <span className="text-xs sm:text-sm tracking-widest font-extrabold uppercase leading-none text-neutral-100 truncate">
@@ -115,7 +115,7 @@ export default function Layout({ children }) {
             </button>
             {/* Botón Buscar Mobile */}
             <button 
-              onClick={openSearch}
+              onClick={() => navigate('/buscar')}
               className="p-2 text-neutral-400 hover:text-white transition-colors mr-2"
             >
               <Search className="w-5 h-5" />
