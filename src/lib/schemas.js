@@ -46,7 +46,14 @@ export const vehiculoSchema = z.object({
 
 // Esquema de validación para Pagos
 export const pagoSchema = z.object({
-  monto: z.coerce.number().min(1, 'El monto debe ser mayor a 0'),
+  monto: z.union([z.string(), z.number()])
+    .transform(val => {
+      if (typeof val === 'number') return val;
+      if (!val) return 0;
+      // Remueve puntos (miles en AR) y cambia coma por punto decimal
+      return Number(val.replace(/\./g, '').replace(',', '.'));
+    })
+    .refine(val => !isNaN(val) && val > 0, { message: 'El monto debe ser mayor a 0' }),
   fecha: z.string().min(1, 'La fecha es obligatoria'),
   metodo: z.enum(['Efectivo', 'Mercado Pago', 'Transferencia', 'Tarjeta'], {
     errorMap: () => ({ message: 'Seleccione un método de pago válido' })
