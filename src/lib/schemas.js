@@ -44,3 +44,15 @@ export const vehiculoSchema = z.object({
   clienteId: z.string().min(1, 'Debe asignar el vehículo a un cliente'),
 });
 
+// Esquema de validación para Pagos
+export const pagoSchema = z.object({
+  monto: z.coerce.number().min(1, 'El monto debe ser mayor a 0'),
+  fecha: z.string().min(1, 'La fecha es obligatoria'),
+  metodo: z.enum(['Efectivo', 'Mercado Pago', 'Transferencia', 'Tarjeta'], {
+    errorMap: () => ({ message: 'Seleccione un método de pago válido' })
+  }),
+  es_cuota: z.boolean().default(false),
+  cuota_actual: z.coerce.number().min(1, 'Mínimo 1').optional().or(z.literal('')),
+  total_cuotas: z.coerce.number().min(2, 'Mínimo 2').optional().or(z.literal('')),
+  nota: z.string().max(200, 'La nota es demasiado larga').optional(),
+});
