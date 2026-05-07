@@ -30,7 +30,7 @@ export default function Layout({ children }) {
         {/* Logo / Nombre de la App */}
         <div className="flex h-24 items-center border-b border-neutral-800 dark:border-red-900/50 px-5 font-bold text-white bg-black dark:bg-black/90">
           <img 
-            src="/logo-dark.png" 
+            src="/logo-dark.png?v=2" 
             alt="Pistón Logo" 
             className="mr-3 h-12 w-auto object-contain mix-blend-lighten drop-shadow-[0_0_12px_rgba(239,68,68,0.6)]" 
           />
@@ -91,7 +91,7 @@ export default function Layout({ children }) {
           {/* Logo en Mobile */}
           <div className="flex items-center md:hidden overflow-hidden">
             <img 
-              src="/logo-dark.png" 
+              src="/logo-dark.png?v=2" 
               alt="Pistón Logo" 
               className="mr-2 h-10 w-auto object-contain mix-blend-lighten drop-shadow-[0_0_8px_rgba(239,68,68,0.5)] shrink-0" 
             />
