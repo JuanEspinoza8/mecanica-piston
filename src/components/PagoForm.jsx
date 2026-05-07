@@ -60,12 +60,12 @@ export default function PagoForm({ clienteId, ordenId, onSuccess, onCancel }) {
           <div>
             <label className="block text-sm font-bold text-neutral-700 dark:text-neutral-300 mb-2">Monto ($)</label>
             <div className="relative">
-              <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-400" />
+              <DollarSign className="absolute left-4 top-1/2 -translate-y-1/2 w-8 h-8 text-neutral-400" />
               <input 
                 type="number"
                 step="0.01"
                 {...register('monto')}
-                className={`w-full pl-10 pr-4 py-3 bg-white dark:bg-neutral-900 border rounded-xl focus:outline-none transition-all shadow-sm ${errors.monto ? 'border-red-500 focus:border-red-500' : 'border-neutral-300 dark:border-neutral-700 focus:border-black dark:focus:border-neutral-500'}`}
+                className={`w-full pl-14 pr-4 py-4 text-3xl font-black text-neutral-900 dark:text-white bg-white dark:bg-neutral-900 border-2 rounded-xl focus:outline-none transition-all shadow-sm ${errors.monto ? 'border-red-500 focus:border-red-500' : 'border-neutral-300 dark:border-neutral-700 focus:border-black dark:focus:border-neutral-500'}`}
                 placeholder="0.00"
               />
             </div>
@@ -79,7 +79,7 @@ export default function PagoForm({ clienteId, ordenId, onSuccess, onCancel }) {
               <input 
                 type="date"
                 {...register('fecha')}
-                className={`w-full pl-10 pr-4 py-3 bg-white dark:bg-neutral-900 border rounded-xl focus:outline-none transition-all shadow-sm ${errors.fecha ? 'border-red-500 focus:border-red-500' : 'border-neutral-300 dark:border-neutral-700 focus:border-black dark:focus:border-neutral-500'}`}
+                className={`w-full pl-10 pr-4 py-3 text-neutral-900 dark:text-white bg-white dark:bg-neutral-900 border rounded-xl focus:outline-none transition-all shadow-sm ${errors.fecha ? 'border-red-500 focus:border-red-500' : 'border-neutral-300 dark:border-neutral-700 focus:border-black dark:focus:border-neutral-500'}`}
               />
             </div>
             {errors.fecha && <p className="mt-1 text-xs font-semibold text-red-500">{errors.fecha.message}</p>}
@@ -93,7 +93,7 @@ export default function PagoForm({ clienteId, ordenId, onSuccess, onCancel }) {
             <CreditCard className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-400" />
             <select 
               {...register('metodo')}
-              className="w-full pl-10 pr-4 py-3 bg-white dark:bg-neutral-900 border border-neutral-300 dark:border-neutral-700 rounded-xl focus:outline-none focus:border-black dark:focus:border-neutral-500 transition-all shadow-sm appearance-none"
+              className="w-full pl-10 pr-4 py-3 text-neutral-900 dark:text-white bg-white dark:bg-neutral-900 border border-neutral-300 dark:border-neutral-700 rounded-xl focus:outline-none focus:border-black dark:focus:border-neutral-500 transition-all shadow-sm appearance-none"
             >
               <option value="Efectivo">Efectivo</option>
               <option value="Mercado Pago">Mercado Pago</option>
@@ -123,7 +123,7 @@ export default function PagoForm({ clienteId, ordenId, onSuccess, onCancel }) {
                   type="number"
                   {...register('cuota_actual')}
                   placeholder="Ej: 1"
-                  className={`w-full px-3 py-2 bg-white dark:bg-neutral-900 border rounded-lg focus:outline-none transition-all shadow-sm ${errors.cuota_actual ? 'border-red-500' : 'border-neutral-300 dark:border-neutral-700'}`}
+                  className={`w-full px-3 py-2 text-neutral-900 dark:text-white bg-white dark:bg-neutral-900 border rounded-lg focus:outline-none transition-all shadow-sm ${errors.cuota_actual ? 'border-red-500' : 'border-neutral-300 dark:border-neutral-700'}`}
                 />
                 {errors.cuota_actual && <p className="mt-1 text-xs text-red-500">{errors.cuota_actual.message}</p>}
               </div>
@@ -133,7 +133,7 @@ export default function PagoForm({ clienteId, ordenId, onSuccess, onCancel }) {
                   type="number"
                   {...register('total_cuotas')}
                   placeholder="Ej: 3"
-                  className={`w-full px-3 py-2 bg-white dark:bg-neutral-900 border rounded-lg focus:outline-none transition-all shadow-sm ${errors.total_cuotas ? 'border-red-500' : 'border-neutral-300 dark:border-neutral-700'}`}
+                  className={`w-full px-3 py-2 text-neutral-900 dark:text-white bg-white dark:bg-neutral-900 border rounded-lg focus:outline-none transition-all shadow-sm ${errors.total_cuotas ? 'border-red-500' : 'border-neutral-300 dark:border-neutral-700'}`}
                 />
                 {errors.total_cuotas && <p className="mt-1 text-xs text-red-500">{errors.total_cuotas.message}</p>}
               </div>
@@ -149,7 +149,7 @@ export default function PagoForm({ clienteId, ordenId, onSuccess, onCancel }) {
             <textarea 
               {...register('nota')}
               rows="3"
-              className="w-full pl-10 pr-4 py-3 bg-white dark:bg-neutral-900 border border-neutral-300 dark:border-neutral-700 rounded-xl focus:outline-none focus:border-black dark:focus:border-neutral-500 transition-all shadow-sm resize-none"
+              className="w-full pl-10 pr-4 py-3 text-neutral-900 dark:text-white bg-white dark:bg-neutral-900 border border-neutral-300 dark:border-neutral-700 rounded-xl focus:outline-none focus:border-black dark:focus:border-neutral-500 transition-all shadow-sm resize-none"
               placeholder="Detalles sobre el pago, número de comprobante..."
             ></textarea>
           </div>

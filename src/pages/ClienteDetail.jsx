@@ -66,7 +66,7 @@ export default function ClienteDetail() {
             className="flex items-center bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded-xl transition-all shadow-sm hidden md:flex"
           >
             <DollarSign className="w-4 h-4 mr-2" />
-            Registrar Pago
+            Registrar Nuevo Pago
           </button>
           <button className="flex items-center bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 hover:border-black dark:hover:border-neutral-600 text-neutral-700 dark:text-neutral-300 font-semibold py-2 px-4 rounded-xl transition-all shadow-sm">
             <Edit3 className="w-4 h-4 mr-2" />
