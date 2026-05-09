@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { ArrowLeft, CarFront, User, Calendar, Wrench, Settings, PackageOpen, Plus, Camera, Trash2, FileText, CheckCircle2, Circle, Loader, PauseCircle, X, Save } from 'lucide-react';
+import { ArrowLeft, CarFront, User, Calendar, Wrench, Settings, PackageOpen, Plus, Camera, Trash2, FileText, CheckCircle2, Circle, Loader, PauseCircle, X, Save, Loader2 } from 'lucide-react';
 import AddRepuestoModal from '../components/AddRepuestoModal';
 import ImageViewerModal from '../components/ImageViewerModal';
 
@@ -52,6 +52,7 @@ export default function OrdenDetail() {
   const [editSintoma, setEditSintoma] = useState(ordenMock.sintoma);
   const [editFechaEstimada, setEditFechaEstimada] = useState(ordenMock.fechaEstimada);
   const [editNotas, setEditNotas] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
 
   // Datos editables de la orden
   const [sintomaActual, setSintomaActual] = useState(ordenMock.sintoma);
@@ -129,12 +130,20 @@ export default function OrdenDetail() {
     setEditModalOpen(true);
   };
 
-  // Guardar cambios de editar orden
-  const handleSaveOrden = () => {
-    setSintomaActual(editSintoma);
-    setFechaEstimadaActual(editFechaEstimada);
-    setNotasActual(editNotas);
-    setEditModalOpen(false);
+  // Guardar cambios de editar orden (protegido contra doble submit)
+  const handleSaveOrden = async () => {
+    if (isSaving) return;
+    setIsSaving(true);
+    try {
+      // Simular guardado en servidor (Juan conectará a Supabase)
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      setSintomaActual(editSintoma);
+      setFechaEstimadaActual(editFechaEstimada);
+      setNotasActual(editNotas);
+      setEditModalOpen(false);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -516,16 +525,27 @@ export default function OrdenDetail() {
             <div className="flex items-center justify-end gap-3 p-6 border-t border-neutral-100 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-950/50 rounded-b-2xl">
               <button
                 onClick={() => setEditModalOpen(false)}
-                className="px-5 py-2.5 text-sm font-semibold text-neutral-600 dark:text-neutral-400 hover:text-neutral-800 dark:hover:text-neutral-200 transition-colors"
+                disabled={isSaving}
+                className="px-5 py-2.5 text-sm font-semibold text-neutral-600 dark:text-neutral-400 hover:text-neutral-800 dark:hover:text-neutral-200 transition-colors disabled:opacity-50"
               >
                 Cancelar
               </button>
               <button
                 onClick={handleSaveOrden}
-                className="flex items-center px-6 py-2.5 bg-red-600 hover:bg-red-700 text-white text-sm font-bold rounded-full transition-colors shadow-lg shadow-red-600/20"
+                disabled={isSaving}
+                className="flex items-center px-6 py-2.5 bg-red-600 hover:bg-red-700 disabled:bg-red-800 disabled:opacity-70 text-white text-sm font-bold rounded-full transition-colors shadow-lg shadow-red-600/20"
               >
-                <Save className="w-4 h-4 mr-2" />
-                Guardar Cambios
+                {isSaving ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Guardando...
+                  </>
+                ) : (
+                  <>
+                    <Save className="w-4 h-4 mr-2" />
+                    Guardar Cambios
+                  </>
+                )}
               </button>
             </div>
           </div>

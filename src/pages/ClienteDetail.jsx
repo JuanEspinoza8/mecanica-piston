@@ -1,15 +1,18 @@
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Phone, Mail, MapPin, CarFront, Calendar, Edit3, Trash2, Loader2, AlertCircle } from 'lucide-react';
+import { ArrowLeft, Phone, Mail, MapPin, CarFront, Calendar, Edit3, Trash2, Loader2, AlertCircle, DollarSign } from 'lucide-react';
 import { useState } from 'react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 import ConfirmModal from '../components/ConfirmModal';
+import PagosHistorial from '../components/PagosHistorial';
+import PagoForm from '../components/PagoForm';
 import { useCliente, useDeleteCliente } from '../hooks/useClientes';
 
 export default function ClienteDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [isPagoModalOpen, setIsPagoModalOpen] = useState(false);
   const { data: cliente, isLoading, isError } = useCliente(id);
   const deleteClienteMutation = useDeleteCliente();
 
@@ -58,6 +61,13 @@ export default function ClienteDetail() {
           <h1 className="text-2xl font-bold text-neutral-900 dark:text-white">Perfil del Cliente</h1>
         </div>
         <div className="flex space-x-2">
+          <button 
+            onClick={() => setIsPagoModalOpen(true)}
+            className="flex items-center bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded-xl transition-all shadow-sm hidden md:flex"
+          >
+            <DollarSign className="w-4 h-4 mr-2" />
+            Registrar Nuevo Pago
+          </button>
           <button className="flex items-center bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 hover:border-black dark:hover:border-neutral-600 text-neutral-700 dark:text-neutral-300 font-semibold py-2 px-4 rounded-xl transition-all shadow-sm">
             <Edit3 className="w-4 h-4 mr-2" />
             Editar
@@ -145,6 +155,22 @@ export default function ClienteDetail() {
           </div>
         )}
       </div>
+
+      {/* Finanzas */}
+      <div className="mt-8">
+        <PagosHistorial clienteId={id} />
+      </div>
+
+      {/* Modal de Pago */}
+      {isPagoModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
+          <PagoForm 
+            clienteId={id} 
+            onSuccess={() => setIsPagoModalOpen(false)} 
+            onCancel={() => setIsPagoModalOpen(false)} 
+          />
+        </div>
+      )}
 
       {/* Modal de Confirmación Demo */}
       <ConfirmModal 

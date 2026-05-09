@@ -111,7 +111,7 @@ export default function Login() {
           <div className="text-center mb-10">
             <div className="inline-flex items-center justify-center mb-4 lg:hidden">
               <img 
-                src="/logo-dark.png" 
+                src="/logo-dark.png?v=2" 
                 alt="Mecánica Pistón" 
                 className="w-24 h-24 object-contain drop-shadow-[0_0_20px_rgba(239,68,68,0.4)] mix-blend-lighten" 
               />
@@ -214,7 +214,7 @@ export default function Login() {
 
         {/* Logo del Pistón - mix-blend-mode hace invisible el fondo negro */}
         <img 
-          src="/logo-dark.png" 
+          src="/logo-dark.png?v=2" 
           alt="Mecánica Pistón - Mascota" 
           className="w-[500px] h-[500px] object-contain hover:scale-105 transition-transform duration-700 ease-out select-none mix-blend-lighten" 
           draggable="false"
