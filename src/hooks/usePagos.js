@@ -40,7 +40,7 @@ export function useCreatePago() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ archivoPDF, ...pagoData }) => {
+    mutationFn: async ({ archivoPDF, metodo, ...pagoData }) => {
       let comprobante_url = null;
 
       // Si hay un archivo PDF, lo subimos al bucket "archivos_pagos"
@@ -65,10 +65,20 @@ export function useCreatePago() {
         comprobante_url = publicUrl;
       }
 
+      // Sanitizar datos para la base de datos
+      const payload = { 
+        ...pagoData, 
+        metodo_pago: metodo, 
+        comprobante_url,
+        monto: parseFloat(String(pagoData.monto).replace(/\./g, '')), // Quitar formato "15.000"
+        cuota_actual: pagoData.es_cuota ? parseInt(pagoData.cuota_actual, 10) : null, // Evitar mandar string vacío ""
+        total_cuotas: pagoData.es_cuota ? parseInt(pagoData.total_cuotas, 10) : null, // Evitar mandar string vacío ""
+      };
+
       // Insertamos el pago en la base de datos
       const { data, error } = await supabase
         .from('pagos')
-        .insert([{ ...pagoData, comprobante_url }])
+        .insert([payload])
         .select()
         .single();
 

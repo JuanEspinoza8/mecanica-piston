@@ -59,8 +59,8 @@ export default function PagosHistorial({ clienteId }) {
               
               <div>
                 <div className="flex flex-wrap items-center gap-2 mb-1">
-                  <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold border ${getMetodoColor(pago.metodo)}`}>
-                    {pago.metodo}
+                  <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold border ${getMetodoColor(pago.metodo_pago)}`}>
+                    {pago.metodo_pago}
                   </span>
                   
                   {pago.es_cuota && (

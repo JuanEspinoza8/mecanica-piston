@@ -582,12 +582,12 @@ Crear `PagosHistorial.jsx` que muestra la lista de todos los pagos de un cliente
 Crear el hook `useSearch(query)` que busca simultáneamente en las tablas `clientes` (nombre, apellido, teléfono) y `vehiculos` (patente, modelo). Usar `ilike` de Supabase para búsqueda parcial. Implementar debounce (300ms) para no disparar queries en cada tecla. Retornar resultados agrupados por tipo (clientes / vehículos).
 
 **Criterios de aceptación:**
-- [ ] Hook `useSearch(query)` con debounce de 300ms
-- [ ] Busca en: nombre, apellido, teléfono de clientes + patente y modelo de vehículos
-- [ ] Retorna resultados agrupados: `{ clientes: [...], vehiculos: [...] }`
-- [ ] No dispara query si el input tiene menos de 2 caracteres
-- [ ] Loading state mientras busca
-- [ ] Búsqueda parcial (escribir "Gon" encuentra "González")
+- [x] Hook `useSearch(query)` con debounce de 300ms
+- [x] Busca en: nombre, apellido, teléfono de clientes + patente y modelo de vehículos
+- [x] Retorna resultados agrupados: `{ clientes: [...], vehiculos: [...] }`
+- [x] No dispara query si el input tiene menos de 2 caracteres
+- [x] Loading state mientras busca
+- [x] Búsqueda parcial (escribir "Gon" encuentra "González")
 
 ---
 
