@@ -10,8 +10,14 @@ const repuestoSchema = z.object({
   precio: z.number().min(0, "El precio no puede ser negativo")
 });
 
-export default function AddRepuestoModal({ isOpen, onClose, onAdd }) {
-  const [isSubmitting, setIsSubmitting] = useState(false);
+import { useAddRepuesto } from '../hooks/useOrdenes';
+import { useFileUpload } from '../hooks/useArchivos';
+import { toast } from 'sonner';
+
+export default function AddRepuestoModal({ isOpen, onClose, ordenId }) {
+  const { mutateAsync: addRepuesto, isPending: isAdding } = useAddRepuesto();
+  const { mutateAsync: uploadFile, isPending: isUploading } = useFileUpload();
+  const [selectedFile, setSelectedFile] = useState(null);
   const [selectedFileName, setSelectedFileName] = useState('');
 
   const { register, handleSubmit, formState: { errors }, reset } = useForm({
@@ -28,31 +34,41 @@ export default function AddRepuestoModal({ isOpen, onClose, onAdd }) {
   const handleFileChange = (e) => {
     const file = e.target.files[0];
     if (file) {
+      setSelectedFile(file);
       setSelectedFileName(file.name);
     }
   };
 
   const onSubmit = async (data) => {
-    setIsSubmitting(true);
-    // Simulamos carga para darle feedback visual al usuario
-    await new Promise(resolve => setTimeout(resolve, 800));
-    
-    // Al nuevo repuesto le agregamos un ID falso y el nombre del archivo si hay uno
-    onAdd({
-      ...data,
-      id: Date.now().toString(),
-      archivo: selectedFileName || null
-    });
-    
-    setIsSubmitting(false);
-    reset();
-    setSelectedFileName('');
-    onClose();
+    try {
+      await addRepuesto({
+        ordenId,
+        nombre: data.nombre,
+        costo: data.precio,
+        cantidad: data.cantidad
+      });
+      
+      if (selectedFile) {
+        const tipo = selectedFile.type.startsWith('image/') ? 'imagen' : 'documento';
+        await uploadFile({ file: selectedFile, ordenId, tipo });
+        toast.success("Repuesto y archivo añadidos");
+      } else {
+        toast.success("Repuesto añadido");
+      }
+      
+      reset();
+      setSelectedFileName('');
+      setSelectedFile(null);
+      onClose();
+    } catch (e) {
+      toast.error("Error al añadir repuesto");
+    }
   };
 
   const handleClose = () => {
     reset();
     setSelectedFileName('');
+    setSelectedFile(null);
     onClose();
   };
 
@@ -169,10 +185,10 @@ export default function AddRepuestoModal({ isOpen, onClose, onAdd }) {
             </button>
             <button
               type="submit"
-              disabled={isSubmitting}
+              disabled={isAdding || isUploading}
               className="flex-1 flex items-center justify-center px-4 py-3 bg-red-600 hover:bg-red-700 text-white font-bold rounded-full transition-colors shadow-lg shadow-red-600/30 disabled:opacity-70 disabled:cursor-not-allowed"
             >
-              {isSubmitting ? (
+              {(isAdding || isUploading) ? (
                 <><Loader2 className="w-5 h-5 animate-spin mr-2" /> Guardando</>
               ) : (
                 'Añadir a la Orden'

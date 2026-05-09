@@ -1,28 +1,21 @@
-import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { toast } from 'sonner';
 import OrdenForm from '../components/OrdenForm';
+import { useCreateOrden } from '../hooks/useOrdenes';
 
 export default function OrdenNueva() {
   const navigate = useNavigate();
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const { mutateAsync: createOrden, isPending } = useCreateOrden();
 
   // Función que se ejecuta cuando el formulario es válido y se envía
   const onSubmit = async (data) => {
-    setIsSubmitting(true);
-    console.log("Datos recibidos de la nueva orden:", data);
-    
     try {
-      // Simulación de carga (Juan conectará esto a Supabase luego)
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
+      await createOrden(data);
       toast.success('Orden creada correctamente');
       navigate('/ordenes');
     } catch (error) {
-      toast.error('Error al crear la orden');
-    } finally {
-      setIsSubmitting(false);
+      toast.error(error.message || 'Error al crear la orden');
     }
   };
 
@@ -44,7 +37,7 @@ export default function OrdenNueva() {
       </div>
 
       {/* Componente del Formulario */}
-      <OrdenForm onSubmit={onSubmit} isSubmitting={isSubmitting} />
+      <OrdenForm onSubmit={onSubmit} isSubmitting={isPending} />
       
     </div>
   );

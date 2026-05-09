@@ -7,7 +7,9 @@ import ConfirmModal from '../components/ConfirmModal';
 import PagosHistorial from '../components/PagosHistorial';
 import PagoForm from '../components/PagoForm';
 import EstadoCuenta from '../components/EstadoCuenta';
+import VehiculoCard from '../components/VehiculoCard';
 import { useCliente, useDeleteCliente } from '../hooks/useClientes';
+import { useVehiculos } from '../hooks/useVehiculos';
 
 export default function ClienteDetail() {
   const { id } = useParams();
@@ -15,9 +17,8 @@ export default function ClienteDetail() {
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [isPagoModalOpen, setIsPagoModalOpen] = useState(false);
   const { data: cliente, isLoading, isError } = useCliente(id);
+  const { data: vehiculos = [], isLoading: isLoadingVehiculos } = useVehiculos(id);
   const deleteClienteMutation = useDeleteCliente();
-
-  const vehiculos = []; // Se implementará en Fase 3
 
   const handleDelete = async () => {
     try {
@@ -133,25 +134,16 @@ export default function ClienteDetail() {
       <div>
         <h3 className="text-xl font-bold text-neutral-900 dark:text-white mb-4 mt-8">Vehículos Registrados</h3>
         
-        {vehiculos.length === 0 ? (
+        {isLoadingVehiculos ? (
+          <div className="flex justify-center py-10"><Loader2 className="w-8 h-8 animate-spin text-neutral-400" /></div>
+        ) : vehiculos.length === 0 ? (
           <div className="bg-neutral-50 dark:bg-neutral-900/50 border border-dashed border-neutral-300 dark:border-neutral-800 rounded-2xl p-10 text-center">
             <p className="text-neutral-500 dark:text-neutral-400 font-medium">Este cliente aún no tiene vehículos registrados.</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {vehiculos.map(vehiculo => (
-              <Link key={vehiculo.id} to={`/vehiculos/${vehiculo.id}`} className="group bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 hover:border-black dark:hover:border-red-500/50 rounded-2xl p-5 flex items-center transition-all shadow-sm">
-                <div className="bg-neutral-100 dark:bg-neutral-800 p-4 rounded-xl mr-4 group-hover:bg-red-50 dark:group-hover:bg-red-900/30 transition-colors">
-                  <CarFront className="w-8 h-8 text-neutral-400 dark:text-neutral-500 group-hover:text-red-600 dark:group-hover:text-red-400 transition-colors" />
-                </div>
-                <div>
-                  <div className="inline-block bg-black dark:bg-red-600 text-white text-xs font-bold px-2 py-0.5 rounded tracking-widest mb-1 shadow-sm">
-                    {vehiculo.patente}
-                  </div>
-                  <h4 className="font-bold text-neutral-900 dark:text-white text-lg">{vehiculo.marca} {vehiculo.modelo}</h4>
-                  <p className="text-sm text-neutral-500 dark:text-neutral-400">{vehiculo.año}</p>
-                </div>
-              </Link>
+              <VehiculoCard key={vehiculo.id} vehiculo={vehiculo} variant="horizontal" />
             ))}
           </div>
         )}

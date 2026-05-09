@@ -2,14 +2,10 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { vehiculoSchema } from '../lib/schemas';
 import { User, CarFront, Hash, Calendar, Palette, Save, Loader2, Search } from 'lucide-react';
+import { useClientes } from '../hooks/useClientes';
 
 export default function VehiculoForm({ defaultValues, onSubmit, isSubmitting }) {
-  // Mock data para los dueños
-  const clientesMock = [
-    { id: '1', nombre: 'Juan Pérez' },
-    { id: '2', nombre: 'María Gómez' },
-    { id: '3', nombre: 'Carlos López' }
-  ];
+  const { data: clientes = [], isLoading: isLoadingClientes } = useClientes();
 
   const { register, handleSubmit, formState: { errors } } = useForm({
     resolver: zodResolver(vehiculoSchema),
@@ -39,11 +35,14 @@ export default function VehiculoForm({ defaultValues, onSubmit, isSubmitting }) 
               </div>
               <select
                 {...register('clienteId')}
+                disabled={isLoadingClientes}
                 className={`block w-full pl-10 pr-10 py-3 border ${errors.clienteId ? 'border-red-500 focus:ring-red-500' : 'border-neutral-300 dark:border-neutral-700 focus:ring-black dark:focus:ring-red-500'} rounded-xl focus:outline-none focus:ring-1 transition-colors appearance-none bg-transparent dark:bg-neutral-950 dark:text-white`}
               >
-                <option value="" className="dark:bg-neutral-900">Seleccione el dueño...</option>
-                {clientesMock.map(c => (
-                  <option key={c.id} value={c.id} className="dark:bg-neutral-900">{c.nombre}</option>
+                <option value="" className="dark:bg-neutral-900">
+                  {isLoadingClientes ? "Cargando clientes..." : "Seleccione el dueño..."}
+                </option>
+                {clientes.map(c => (
+                  <option key={c.id} value={c.id} className="dark:bg-neutral-900">{c.nombre} {c.apellido || ''}</option>
                 ))}
               </select>
               <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
@@ -122,21 +121,8 @@ export default function VehiculoForm({ defaultValues, onSubmit, isSubmitting }) 
             {errors.año && <p className="mt-1 text-sm text-red-600 dark:text-red-400">{errors.año.message}</p>}
           </div>
 
-          {/* Color */}
-          <div>
-            <label className="block text-sm font-semibold text-neutral-700 dark:text-neutral-300 mb-1">Color</label>
-            <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <Palette className="h-5 w-5 text-neutral-400 dark:text-neutral-500" />
-              </div>
-              <input
-                type="text"
-                {...register('color')}
-                className="block w-full pl-10 pr-3 py-3 border border-neutral-300 dark:border-neutral-700 focus:border-black dark:focus:border-red-500 rounded-xl focus:outline-none focus:ring-1 focus:ring-black dark:focus:ring-red-500 transition-colors bg-transparent dark:bg-neutral-950 dark:text-white"
-                placeholder="Ej: Gris Plata"
-              />
-            </div>
-          </div>
+          {/* Espacio vacío para mantener el grid en desktop si se quiere */}
+          <div className="hidden md:block"></div>
         </div>
 
       </div>

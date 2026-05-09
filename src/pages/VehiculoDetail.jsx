@@ -1,54 +1,41 @@
-import { useParams, Link } from 'react-router-dom';
-import { ArrowLeft, CarFront, User, Calendar, Palette, Hash, ClipboardList, Plus, ChevronRight, Activity } from 'lucide-react';
-import HistorialTimeline from '../components/HistorialTimeline';
+import { useState } from 'react';
+import { useParams, Link, useNavigate } from 'react-router-dom';
+import { ArrowLeft, CarFront, User, Calendar, Palette, Hash, ClipboardList, Plus, ChevronRight, Loader2, Trash2 } from 'lucide-react';
+import { useVehiculo, useDeleteVehiculo } from '../hooks/useVehiculos';
+import { useOrdenes } from '../hooks/useOrdenes';
+import ConfirmModal from '../components/ConfirmModal';
+import { toast } from 'sonner';
+import { format } from 'date-fns';
 
 export default function VehiculoDetail() {
   const { id } = useParams();
+  const navigate = useNavigate();
+  
+  const { data: vehiculo, isLoading, isError } = useVehiculo(id);
+  const { mutateAsync: deleteVehiculo, isPending: isDeleting } = useDeleteVehiculo();
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
 
-  // Mock data del vehículo
-  const vehiculo = {
-    id: id || '101',
-    patente: 'AB 123 CD',
-    marca: 'Ford',
-    modelo: 'Fiesta Titanium',
-    año: 2018,
-    color: 'Blanco',
-    cliente: { id: 1, nombre: 'Juan Pérez' },
+  const handleDelete = async () => {
+    try {
+      await deleteVehiculo(id);
+      toast.success('Vehículo eliminado correctamente');
+      navigate('/vehiculos');
+    } catch (error) {
+      toast.error('Error al eliminar el vehículo');
+    }
   };
 
-  // Mock data de órdenes asociadas a este vehículo
-  const ordenes = [
-    { id: 'ORD-001', fecha: '28/04/2026', estado: 'En proceso', total: '$15.000' },
-    { id: 'ORD-009', fecha: '10/01/2026', estado: 'Terminado', total: '$45.000' },
-  ];
+  // Traer las órdenes reales del vehículo
+  const { data: ordenesData = [], isLoading: isLoadingOrdenes } = useOrdenes(id);
 
-  // Mock data del historial de modificaciones
-  const historialMock = [
-    {
-      id: 1,
-      tipo: 'reparacion',
-      titulo: 'Cambio de pastillas de freno',
-      descripcion: 'Se reemplazaron las pastillas delanteras y se purgó el sistema.',
-      fecha: new Date(Date.now() - 1000 * 60 * 60 * 24 * 2).toISOString(), // Hace 2 días
-      usuario: 'Carlos Mecánico'
-    },
-    {
-      id: 2,
-      tipo: 'alerta',
-      titulo: 'Batería con bajo rendimiento',
-      descripcion: 'El test de batería indica que está por debajo del 40% de vida útil.',
-      fecha: new Date(Date.now() - 1000 * 60 * 60 * 24 * 15).toISOString(), // Hace 15 días
-      usuario: 'Lucas'
-    },
-    {
-      id: 3,
-      tipo: 'completado',
-      titulo: 'Servicio de los 50.000km completado',
-      descripcion: 'Cambio de aceite, filtros, revisión de tren delantero y escaneo general.',
-      fecha: new Date(Date.now() - 1000 * 60 * 60 * 24 * 45).toISOString(), // Hace 45 días
-      usuario: 'Carlos Mecánico'
-    }
-  ];
+  // Mapear los datos de BD al formato esperado por la UI
+  const ordenes = ordenesData.map(orden => ({
+    id: orden.id,
+    displayId: `ORD-${orden.id.substring(0, 4).toUpperCase()}`,
+    fecha: orden.fecha_ingreso ? format(new Date(orden.fecha_ingreso), 'dd/MM/yyyy') : '-',
+    estado: orden.estado,
+    total: `$${(orden.totalRepuestos || 0).toLocaleString('es-AR')}`
+  }));
 
   const getEstadoBadge = (estado) => {
     switch(estado) {
@@ -57,6 +44,19 @@ export default function VehiculoDetail() {
       default: return 'bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 border-neutral-200 dark:border-neutral-700';
     }
   };
+
+  if (isLoading) {
+    return <div className="flex justify-center items-center py-20"><Loader2 className="w-10 h-10 animate-spin text-neutral-400" /></div>;
+  }
+  
+  if (isError || !vehiculo) {
+    return (
+      <div className="text-center py-20">
+        <h2 className="text-2xl font-bold text-neutral-900 dark:text-white mb-2">Vehículo no encontrado</h2>
+        <Link to="/vehiculos" className="text-red-500 hover:underline">Volver a la lista</Link>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-5xl mx-auto space-y-6 pb-6">
@@ -69,6 +69,13 @@ export default function VehiculoDetail() {
           </Link>
           <h1 className="text-2xl font-bold text-neutral-900 dark:text-white">Perfil del Vehículo</h1>
         </div>
+        <button
+          onClick={() => setIsDeleteModalOpen(true)}
+          className="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-colors"
+          title="Eliminar Vehículo"
+        >
+          <Trash2 className="w-5 h-5" />
+        </button>
       </div>
 
       {/* Tarjeta Principal del Vehículo */}
@@ -88,21 +95,17 @@ export default function VehiculoDetail() {
           <div className="flex-1 space-y-4 w-full z-10 relative">
             <div>
               <h2 className="text-3xl font-black text-neutral-900 dark:text-white tracking-tight">{vehiculo.marca} {vehiculo.modelo}</h2>
-              <Link to={`/clientes/${vehiculo.cliente.id}`} className="inline-flex items-center text-red-600 hover:text-red-700 font-medium mt-1">
-                <User className="w-4 h-4 mr-1" /> Propiedad de {vehiculo.cliente.nombre}
-              </Link>
+              {vehiculo.cliente && (
+                <Link to={`/clientes/${vehiculo.cliente.id}`} className="inline-flex items-center text-red-600 hover:text-red-700 font-medium mt-1">
+                  <User className="w-4 h-4 mr-1" /> Propiedad de {vehiculo.cliente.nombre} {vehiculo.cliente.apellido || ''}
+                </Link>
+              )}
             </div>
             
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 border-t border-neutral-100 dark:border-neutral-800 pt-4">
               <div>
                 <p className="text-xs font-semibold text-neutral-400 dark:text-neutral-500 uppercase tracking-wider mb-1">Año</p>
                 <p className="font-bold text-neutral-800 dark:text-neutral-200">{vehiculo.año}</p>
-              </div>
-              <div>
-                <p className="text-xs font-semibold text-neutral-400 dark:text-neutral-500 uppercase tracking-wider mb-1">Color</p>
-                <p className="font-bold text-neutral-800 dark:text-neutral-200 flex items-center">
-                  {vehiculo.color}
-                </p>
               </div>
             </div>
           </div>
@@ -133,11 +136,11 @@ export default function VehiculoDetail() {
                 <Link key={orden.id} to={`/ordenes/${orden.id}`} className="group flex items-center justify-between p-4 hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors">
                   <div className="flex items-center gap-4">
                     <div className="bg-neutral-100 dark:bg-neutral-800 rounded-lg p-3 text-center min-w-[80px]">
-                      <p className="text-xs font-bold text-neutral-500 dark:text-neutral-400 uppercase">{orden.fecha.split('/')[1]}</p>
-                      <p className="text-lg font-black text-neutral-900 dark:text-white">{orden.fecha.split('/')[0]}</p>
+                      <p className="text-xs font-bold text-neutral-500 dark:text-neutral-400 uppercase">{orden.fecha !== '-' ? orden.fecha.split('/')[1] : '-'}</p>
+                      <p className="text-lg font-black text-neutral-900 dark:text-white">{orden.fecha !== '-' ? orden.fecha.split('/')[0] : '-'}</p>
                     </div>
                     <div>
-                      <h4 className="font-bold text-neutral-900 dark:text-white group-hover:text-red-500 transition-colors">{orden.id}</h4>
+                      <h4 className="font-bold text-neutral-900 dark:text-white group-hover:text-red-500 transition-colors">{orden.displayId}</h4>
                       <span className={`inline-block px-2 py-0.5 mt-1 rounded text-[10px] font-bold border uppercase ${getEstadoBadge(orden.estado)}`}>
                         {orden.estado}
                       </span>
@@ -154,17 +157,14 @@ export default function VehiculoDetail() {
         )}
       </div>
 
-      {/* Historial de Modificaciones (Timeline) */}
-      <div className="mt-8">
-        <div className="flex items-center justify-between mb-4 mt-8">
-          <h3 className="text-xl font-bold text-neutral-900 dark:text-white flex items-center">
-            <Activity className="w-5 h-5 mr-2 text-neutral-500 dark:text-neutral-400" />
-            Línea de Tiempo del Vehículo
-          </h3>
-        </div>
-        <HistorialTimeline historial={historialMock} />
-      </div>
-
+      <ConfirmModal
+        isOpen={isDeleteModalOpen}
+        onClose={() => setIsDeleteModalOpen(false)}
+        onConfirm={handleDelete}
+        titulo="Eliminar Vehículo"
+        mensaje={`¿Estás seguro que querés eliminar el vehículo ${vehiculo.patente}? Esta acción no se puede deshacer y borrará todo su historial.`}
+        isLoading={isDeleting}
+      />
     </div>
   );
 }

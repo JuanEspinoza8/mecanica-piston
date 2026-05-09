@@ -2,14 +2,19 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { ordenSchema } from '../lib/schemas';
 import { User, CarFront, FileText, Save, Loader2, Search } from 'lucide-react';
-import { useState } from 'react';
+import { useVehiculos } from '../hooks/useVehiculos';
 
 export default function OrdenForm({ defaultValues, onSubmit, isSubmitting }) {
-  // En la vida real esto vendría de Supabase. Usamos mock data por ahora.
-  const clientesMock = [
-    { id: '1', nombre: 'Juan Pérez', vehiculos: [{ id: '101', marca: 'Ford', modelo: 'Fiesta', patente: 'AB123CD' }] },
-    { id: '2', nombre: 'María Gómez', vehiculos: [{ id: '102', marca: 'Toyota', modelo: 'Hilux', patente: 'AA000BB' }] }
-  ];
+  const { data: vehiculos = [], isLoading } = useVehiculos();
+  
+  // Extraer clientes únicos de la lista de vehículos
+  const clientesMap = new Map();
+  vehiculos.forEach(v => {
+    if (v.cliente && !clientesMap.has(v.cliente.id)) {
+      clientesMap.set(v.cliente.id, v.cliente);
+    }
+  });
+  const clientes = Array.from(clientesMap.values());
 
   const { register, handleSubmit, formState: { errors }, watch } = useForm({
     resolver: zodResolver(ordenSchema),
@@ -22,8 +27,7 @@ export default function OrdenForm({ defaultValues, onSubmit, isSubmitting }) {
 
   // Observamos el cliente seleccionado para saber qué vehículos mostrar
   const clienteIdSeleccionado = watch('clienteId');
-  const clienteActual = clientesMock.find(c => c.id === clienteIdSeleccionado);
-  const vehiculosDisponibles = clienteActual ? clienteActual.vehiculos : [];
+  const vehiculosDisponibles = vehiculos.filter(v => v.cliente?.id === clienteIdSeleccionado);
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
@@ -40,11 +44,12 @@ export default function OrdenForm({ defaultValues, onSubmit, isSubmitting }) {
               </div>
               <select
                 {...register('clienteId')}
+                disabled={isLoading}
                 className={`block w-full pl-10 pr-10 py-3 border ${errors.clienteId ? 'border-red-500 focus:ring-red-500' : 'border-neutral-300 dark:border-neutral-700 focus:ring-black dark:focus:ring-red-500'} rounded-xl focus:outline-none focus:ring-1 transition-colors appearance-none bg-transparent dark:bg-neutral-950 dark:text-white`}
               >
-                <option value="" className="dark:bg-neutral-900">Seleccione un cliente...</option>
-                {clientesMock.map(c => (
-                  <option key={c.id} value={c.id} className="dark:bg-neutral-900">{c.nombre}</option>
+                <option value="" className="dark:bg-neutral-900">{isLoading ? 'Cargando...' : 'Seleccione un cliente...'}</option>
+                {clientes.map(c => (
+                  <option key={c.id} value={c.id} className="dark:bg-neutral-900">{c.nombre} {c.apellido || ''}</option>
                 ))}
               </select>
               <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">

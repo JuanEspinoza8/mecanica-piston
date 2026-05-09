@@ -12,6 +12,7 @@ DROP POLICY IF EXISTS "Permitir todo a todos temporalmente" ON public.pagos;
 DROP POLICY IF EXISTS "Permitir todo a todos temporalmente" ON public.notas;
 DROP POLICY IF EXISTS "Permitir todo a todos temporalmente" ON public.historial_modificaciones;
 DROP POLICY IF EXISTS "Permitir todo a todos temporalmente" ON public.archivos;
+DROP POLICY IF EXISTS "Permitir todo a todos temporalmente" ON public.tareas_orden;
 
 DROP FUNCTION IF EXISTS public.get_saldo_cliente(UUID) CASCADE;
 
@@ -23,6 +24,7 @@ DROP TABLE IF EXISTS public.repuestos CASCADE;
 DROP TABLE IF EXISTS public.ordenes_trabajo CASCADE;
 DROP TABLE IF EXISTS public.vehiculos CASCADE;
 DROP TABLE IF EXISTS public.clientes CASCADE;
+DROP TABLE IF EXISTS public.tareas_orden CASCADE;
 
 -- ==============================================================================
 -- CREACIÓN DE TABLAS
@@ -58,7 +60,17 @@ CREATE TABLE public.ordenes_trabajo (
     diagnostico TEXT,
     fecha_ingreso TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     fecha_egreso TIMESTAMP WITH TIME ZONE,
-    estado TEXT DEFAULT 'Abierta' CHECK (estado IN ('Abierta', 'En Proceso', 'Cerrada')),
+    estado TEXT DEFAULT 'Pendiente' CHECK (estado IN ('Pendiente', 'En proceso', 'Esperando repuesto', 'Terminado', 'Entregado')),
+    notas TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Tabla de Tareas de Orden (Checklist)
+CREATE TABLE public.tareas_orden (
+    id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    orden_id UUID NOT NULL REFERENCES public.ordenes_trabajo(id) ON DELETE CASCADE,
+    descripcion TEXT NOT NULL,
+    estado TEXT DEFAULT 'Pendiente' CHECK (estado IN ('Pendiente', 'En proceso', 'Terminado')),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
@@ -153,6 +165,7 @@ ALTER TABLE public.clientes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.vehiculos ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.ordenes_trabajo ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.repuestos ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.tareas_orden ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.pagos ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.notas ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.historial_modificaciones ENABLE ROW LEVEL SECURITY;
@@ -163,6 +176,7 @@ CREATE POLICY "Permitir todo a todos temporalmente" ON public.clientes FOR ALL U
 CREATE POLICY "Permitir todo a todos temporalmente" ON public.vehiculos FOR ALL USING (true);
 CREATE POLICY "Permitir todo a todos temporalmente" ON public.ordenes_trabajo FOR ALL USING (true);
 CREATE POLICY "Permitir todo a todos temporalmente" ON public.repuestos FOR ALL USING (true);
+CREATE POLICY "Permitir todo a todos temporalmente" ON public.tareas_orden FOR ALL USING (true);
 CREATE POLICY "Permitir todo a todos temporalmente" ON public.pagos FOR ALL USING (true);
 CREATE POLICY "Permitir todo a todos temporalmente" ON public.notas FOR ALL USING (true);
 CREATE POLICY "Permitir todo a todos temporalmente" ON public.historial_modificaciones FOR ALL USING (true);

@@ -1,27 +1,20 @@
-import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { toast } from 'sonner';
 import VehiculoForm from '../components/VehiculoForm';
+import { useCreateVehiculo } from '../hooks/useVehiculos';
 
 export default function VehiculoNuevo() {
   const navigate = useNavigate();
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const { mutateAsync: createVehiculo, isPending } = useCreateVehiculo();
 
   const onSubmit = async (data) => {
-    setIsSubmitting(true);
-    console.log("Datos recibidos del vehículo:", data);
-    
     try {
-      // Simular guardado
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
+      await createVehiculo(data);
       toast.success('Vehículo registrado correctamente');
       navigate('/vehiculos');
     } catch (error) {
-      toast.error('Error al registrar el vehículo');
-    } finally {
-      setIsSubmitting(false);
+      toast.error(error.message || 'Error al registrar el vehículo');
     }
   };
 
@@ -41,7 +34,7 @@ export default function VehiculoNuevo() {
         </div>
       </div>
 
-      <VehiculoForm onSubmit={onSubmit} isSubmitting={isSubmitting} />
+      <VehiculoForm onSubmit={onSubmit} isSubmitting={isPending} />
       
     </div>
   );

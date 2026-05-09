@@ -1,14 +1,12 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Search, Plus, Filter, ChevronRight, LayoutList, LayoutGrid, Clock, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { Search, Plus, Filter, ChevronRight, LayoutList, LayoutGrid, Clock, AlertCircle, CheckCircle2, Loader2 } from 'lucide-react';
+import { useOrdenes, useUpdateOrden } from '../hooks/useOrdenes';
+import { format } from 'date-fns';
 
 export default function OrdenesList() {
-  const [ordenes, setOrdenes] = useState([
-    { id: 'ORD-001', cliente: 'Juan Pérez', vehiculo: 'Ford Fiesta (AB123CD)', estado: 'En proceso', fecha: '28/04/2026', total: '$15.000' },
-    { id: 'ORD-002', cliente: 'María Gómez', vehiculo: 'Toyota Hilux (AA000BB)', estado: 'Terminado', fecha: '27/04/2026', total: '$45.000' },
-    { id: 'ORD-003', cliente: 'Carlos López', vehiculo: 'VW Gol Trend (AC999XX)', estado: 'Esperando repuesto', fecha: '26/04/2026', total: '-' },
-    { id: 'ORD-004', cliente: 'Ana Martínez', vehiculo: 'Fiat Cronos (AE444ZZ)', estado: 'Terminado', fecha: '20/04/2026', total: '$12.500' },
-  ]);
+  const { data: ordenesData = [], isLoading } = useOrdenes();
+  const { mutateAsync: updateOrden } = useUpdateOrden();
 
   const [filtroTexto, setFiltroTexto] = useState('');
   const [filtroEstado, setFiltroEstado] = useState('Todas');
@@ -17,17 +15,27 @@ export default function OrdenesList() {
   // Estado para saber qué elemento se está arrastrando
   const [draggedItem, setDraggedItem] = useState(null);
 
+  const ordenes = ordenesData.map(orden => ({
+    id: orden.id,
+    displayId: `ORD-${orden.id.substring(0, 4).toUpperCase()}`,
+    cliente: orden.cliente ? `${orden.cliente.nombre} ${orden.cliente.apellido || ''}` : 'Desconocido',
+    vehiculo: orden.vehiculo ? `${orden.vehiculo.marca} ${orden.vehiculo.modelo} (${orden.vehiculo.patente})` : 'Desconocido',
+    estado: orden.estado,
+    fecha: orden.fecha_ingreso ? format(new Date(orden.fecha_ingreso), 'dd/MM/yyyy') : '',
+    total: `$${(orden.totalRepuestos || 0).toLocaleString('es-AR')}`,
+  }));
+
   const ordenesFiltradas = ordenes.filter(orden => {
     const coincideTexto = 
       orden.cliente.toLowerCase().includes(filtroTexto.toLowerCase()) || 
       orden.vehiculo.toLowerCase().includes(filtroTexto.toLowerCase()) ||
-      orden.id.toLowerCase().includes(filtroTexto.toLowerCase());
+      orden.displayId.toLowerCase().includes(filtroTexto.toLowerCase());
 
     let coincideEstado = true;
     if (filtroEstado === 'Abiertas') {
-      coincideEstado = orden.estado !== 'Terminado';
+      coincideEstado = orden.estado !== 'Terminado' && orden.estado !== 'Entregado';
     } else if (filtroEstado === 'Terminadas') {
-      coincideEstado = orden.estado === 'Terminado';
+      coincideEstado = orden.estado === 'Terminado' || orden.estado === 'Entregado';
     }
 
     return coincideTexto && coincideEstado;
@@ -35,7 +43,8 @@ export default function OrdenesList() {
 
   const getEstadoColor = (estado) => {
     switch(estado) {
-      case 'Terminado': return 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 border-green-200 dark:border-green-800/50';
+      case 'Terminado':
+      case 'Entregado': return 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 border-green-200 dark:border-green-800/50';
       case 'En proceso': return 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-800/50';
       case 'Esperando repuesto': return 'bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400 border-orange-200 dark:border-orange-800/50';
       default: return 'bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 border-neutral-200 dark:border-neutral-700';
@@ -44,7 +53,8 @@ export default function OrdenesList() {
 
   const getEstadoIcon = (estado) => {
     switch(estado) {
-      case 'Terminado': return <CheckCircle2 className="w-5 h-5 text-green-600 dark:text-green-400" />;
+      case 'Terminado':
+      case 'Entregado': return <CheckCircle2 className="w-5 h-5 text-green-600 dark:text-green-400" />;
       case 'En proceso': return <Clock className="w-5 h-5 text-blue-600 dark:text-blue-400" />;
       case 'Esperando repuesto': return <AlertCircle className="w-5 h-5 text-orange-600 dark:text-orange-400" />;
       default: return null;
@@ -55,7 +65,6 @@ export default function OrdenesList() {
   const handleDragStart = (e, ordenId) => {
     setDraggedItem(ordenId);
     e.dataTransfer.effectAllowed = 'move';
-    // Hacemos la tarjeta un poco transparente mientras se arrastra
     setTimeout(() => {
       e.target.style.opacity = '0.5';
     }, 0);
@@ -67,28 +76,37 @@ export default function OrdenesList() {
   };
 
   const handleDragOver = (e) => {
-    e.preventDefault(); // Necesario para permitir el "Drop"
+    e.preventDefault(); 
     e.dataTransfer.dropEffect = 'move';
   };
 
-  const handleDrop = (e, nuevoEstado) => {
+  const handleDrop = async (e, nuevoEstado) => {
     e.preventDefault();
     if (!draggedItem) return;
 
-    // Actualizamos el estado de la orden arrastrada
-    setOrdenes(prevOrdenes => 
-      prevOrdenes.map(ord => 
-        ord.id === draggedItem ? { ...ord, estado: nuevoEstado } : ord
-      )
-    );
+    try {
+      await updateOrden({ id: draggedItem, estado: nuevoEstado });
+    } catch (error) {
+      console.error("Error updating order state:", error);
+    }
     setDraggedItem(null);
   };
 
   const columnasKanban = [
+    { id: 'Pendiente', titulo: 'Pendiente' },
     { id: 'En proceso', titulo: 'En Proceso' },
     { id: 'Esperando repuesto', titulo: 'Esperando Repuesto' },
     { id: 'Terminado', titulo: 'Terminado' }
   ];
+
+  if (isLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 text-neutral-500">
+        <Loader2 className="w-10 h-10 animate-spin mb-4" />
+        <p>Cargando órdenes de trabajo...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 pb-6">
@@ -109,7 +127,7 @@ export default function OrdenesList() {
         </Link>
       </div>
 
-      {/* Barra de Controles (Buscador, Filtros, Toggle Vista) */}
+      {/* Barra de Controles */}
       <div className="flex flex-col md:flex-row gap-4 items-center">
         
         <div className="relative flex-1 w-full">
@@ -192,7 +210,7 @@ export default function OrdenesList() {
                 <div className="hidden md:block absolute left-0 top-0 w-1 h-full bg-red-500 opacity-0 group-hover:opacity-100 transition-opacity"></div>
                 
                 <div className="col-span-2 flex md:flex-col justify-between md:justify-start items-center md:items-start md:gap-1">
-                  <span className="font-black text-neutral-900 dark:text-white">{orden.id}</span>
+                  <span className="font-black text-neutral-900 dark:text-white">{orden.displayId}</span>
                   <span className="text-xs font-medium text-neutral-500 dark:text-neutral-400">{orden.fecha}</span>
                 </div>
                 
@@ -224,7 +242,7 @@ export default function OrdenesList() {
       ) : (
 
         /* --- VISTA DE TABLERO KANBAN --- */
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 animate-in fade-in zoom-in-95 duration-300">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 animate-in fade-in zoom-in-95 duration-300">
           {columnasKanban.map(col => {
             const ordenesColumna = ordenesFiltradas.filter(o => o.estado === col.id);
             
@@ -256,7 +274,7 @@ export default function OrdenesList() {
                     >
                       <div className="flex justify-between items-start mb-2">
                         <Link to={`/ordenes/${orden.id}`} className="font-black text-neutral-900 dark:text-white hover:text-red-600 transition-colors">
-                          {orden.id}
+                          {orden.displayId}
                         </Link>
                         <span className="text-[10px] font-bold text-neutral-400 dark:text-neutral-500 bg-neutral-100 dark:bg-neutral-800 px-2 py-0.5 rounded-full">
                           {orden.fecha}
