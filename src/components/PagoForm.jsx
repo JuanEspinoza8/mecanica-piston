@@ -5,6 +5,7 @@ import { pagoSchema } from '../lib/schemas';
 import { DollarSign, Calendar, FileText, CreditCard, Save, X, Info, UploadCloud } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
+import { useCreatePago } from '../hooks/usePagos';
 
 export default function PagoForm({ clienteId, ordenId, onSuccess, onCancel }) {
   const { register, handleSubmit, watch, formState: { errors, isSubmitting } } = useReactHookForm({
@@ -22,6 +23,7 @@ export default function PagoForm({ clienteId, ordenId, onSuccess, onCancel }) {
 
   const isCuota = watch('es_cuota');
   const [archivoPDF, setArchivoPDF] = useState(null);
+  const createPagoMutation = useCreatePago();
 
   const handleMontoChange = (e) => {
     let rawValue = e.target.value.replace(/\D/g, '');
@@ -32,18 +34,17 @@ export default function PagoForm({ clienteId, ordenId, onSuccess, onCancel }) {
 
   const onSubmit = async (data) => {
     try {
-      // Mock del hook useCreatePago de Supabase que hará Juan
-      // await createPagoMutation.mutateAsync({ ...data, clienteId, ordenId });
+      await createPagoMutation.mutateAsync({ 
+        ...data, 
+        cliente_id: clienteId, 
+        orden_id: ordenId || null,
+        archivoPDF 
+      });
       
-      console.log("Simulando guardado de pago:", { ...data, cliente_id: clienteId, orden_id: ordenId });
-      
-      // Simulamos delay
-      await new Promise(resolve => setTimeout(resolve, 800));
-      
-      toast.success('Pago registrado correctamente');
       if (onSuccess) onSuccess(data);
     } catch (error) {
-      toast.error('Error al registrar el pago: ' + error.message);
+      // El toast de error ya está manejado en el hook
+      console.error(error);
     }
   };
 
@@ -201,10 +202,10 @@ export default function PagoForm({ clienteId, ordenId, onSuccess, onCancel }) {
           )}
           <button 
             type="submit" 
-            disabled={isSubmitting}
+            disabled={createPagoMutation.isPending}
             className="flex-1 px-4 py-3 rounded-xl bg-black dark:bg-white text-white dark:text-black font-bold hover:bg-neutral-800 dark:hover:bg-neutral-200 transition-colors flex items-center justify-center disabled:opacity-50"
           >
-            {isSubmitting ? (
+            {createPagoMutation.isPending ? (
               <span className="flex items-center"><div className="w-5 h-5 border-2 border-white dark:border-black border-t-transparent rounded-full animate-spin mr-2"></div> Guardando...</span>
             ) : (
               <span className="flex items-center"><Save className="w-5 h-5 mr-2" /> Registrar Pago</span>

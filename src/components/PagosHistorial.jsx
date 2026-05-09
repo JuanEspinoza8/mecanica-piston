@@ -1,36 +1,9 @@
-import { DollarSign, Calendar, FileText, CreditCard, Receipt, Wallet, ArrowUpRight } from 'lucide-react';
+import { DollarSign, Calendar, FileText, CreditCard, Receipt, Wallet, ArrowUpRight, Loader2, Download } from 'lucide-react';
 import { format } from 'date-fns';
+import { usePagos } from '../hooks/usePagos';
 
 export default function PagosHistorial({ clienteId }) {
-  // Mock de pagos por ahora, Juan luego hará el hook usePagos(clienteId)
-  const pagos = [
-    {
-      id: 1,
-      fecha: '2026-05-06',
-      monto: 15000,
-      metodo: 'Transferencia',
-      es_cuota: true,
-      cuota_actual: 1,
-      total_cuotas: 3,
-      nota: 'Pago inicial por cambio de distribución',
-    },
-    {
-      id: 2,
-      fecha: '2026-04-20',
-      monto: 8500,
-      metodo: 'Efectivo',
-      es_cuota: false,
-      nota: 'Alineación y balanceo',
-    },
-    {
-      id: 3,
-      fecha: '2026-03-15',
-      monto: 32000,
-      metodo: 'Mercado Pago',
-      es_cuota: false,
-      nota: 'Cambio de embrague',
-    }
-  ];
+  const { data: pagos, isLoading } = usePagos(clienteId);
 
   const getMetodoColor = (metodo) => {
     switch (metodo) {
@@ -41,6 +14,15 @@ export default function PagosHistorial({ clienteId }) {
       default: return 'bg-neutral-100 text-neutral-700 dark:bg-neutral-800 dark:text-neutral-300';
     }
   };
+
+  if (isLoading) {
+    return (
+      <div className="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 p-10 flex flex-col items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-neutral-400 mb-2" />
+        <p className="text-neutral-500 font-medium">Cargando historial de pagos...</p>
+      </div>
+    );
+  }
 
   if (!pagos || pagos.length === 0) {
     return (
@@ -101,10 +83,21 @@ export default function PagosHistorial({ clienteId }) {
               </div>
             </div>
 
-            <div className="text-right sm:text-right shrink-0">
+            <div className="text-right sm:text-right shrink-0 flex flex-col items-end gap-2">
               <span className="text-lg font-black text-neutral-900 dark:text-white">
-                ${pago.monto.toLocaleString('es-AR')}
+                ${Number(pago.monto).toLocaleString('es-AR')}
               </span>
+              {pago.comprobante_url && (
+                <a 
+                  href={pago.comprobante_url} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="flex items-center text-xs font-bold text-neutral-600 dark:text-neutral-400 hover:text-black dark:hover:text-white transition-colors bg-neutral-100 dark:bg-neutral-800 px-2 py-1 rounded"
+                >
+                  <Download className="w-3 h-3 mr-1" />
+                  PDF
+                </a>
+              )}
             </div>
 
           </div>

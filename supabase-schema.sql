@@ -1,5 +1,33 @@
 -- Supabase Schema para Mecánica Pistón
 
+-- ==============================================================================
+-- ⚠️ PELIGRO: ESTAS LÍNEAS BORRAN TODAS LAS TABLAS EXISTENTES.
+-- Usar solo para inicializar o hacer hard-reset de la base de datos.
+-- ==============================================================================
+DROP POLICY IF EXISTS "Permitir todo a todos temporalmente" ON public.clientes;
+DROP POLICY IF EXISTS "Permitir todo a todos temporalmente" ON public.vehiculos;
+DROP POLICY IF EXISTS "Permitir todo a todos temporalmente" ON public.ordenes_trabajo;
+DROP POLICY IF EXISTS "Permitir todo a todos temporalmente" ON public.repuestos;
+DROP POLICY IF EXISTS "Permitir todo a todos temporalmente" ON public.pagos;
+DROP POLICY IF EXISTS "Permitir todo a todos temporalmente" ON public.notas;
+DROP POLICY IF EXISTS "Permitir todo a todos temporalmente" ON public.historial_modificaciones;
+DROP POLICY IF EXISTS "Permitir todo a todos temporalmente" ON public.archivos;
+
+DROP FUNCTION IF EXISTS public.get_saldo_cliente(UUID) CASCADE;
+
+DROP TABLE IF EXISTS public.archivos CASCADE;
+DROP TABLE IF EXISTS public.historial_modificaciones CASCADE;
+DROP TABLE IF EXISTS public.notas CASCADE;
+DROP TABLE IF EXISTS public.pagos CASCADE;
+DROP TABLE IF EXISTS public.repuestos CASCADE;
+DROP TABLE IF EXISTS public.ordenes_trabajo CASCADE;
+DROP TABLE IF EXISTS public.vehiculos CASCADE;
+DROP TABLE IF EXISTS public.clientes CASCADE;
+
+-- ==============================================================================
+-- CREACIÓN DE TABLAS
+-- ==============================================================================
+
 -- Tabla de Clientes
 CREATE TABLE public.clientes (
     id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
@@ -51,6 +79,10 @@ CREATE TABLE public.pagos (
     orden_id UUID REFERENCES public.ordenes_trabajo(id) ON DELETE SET NULL,
     monto DECIMAL(10, 2) NOT NULL CHECK (monto > 0),
     metodo_pago TEXT NOT NULL CHECK (metodo_pago IN ('Efectivo', 'Mercado Pago', 'Transferencia', 'Tarjeta')),
+    es_cuota BOOLEAN DEFAULT FALSE,
+    cuota_actual INTEGER,
+    total_cuotas INTEGER,
+    comprobante_url TEXT,
     nota TEXT,
     fecha TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
@@ -83,7 +115,40 @@ CREATE TABLE public.archivos (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Configuración de Seguridad y RLS
+-- ==============================================================================
+-- FUNCIONES RPC
+-- ==============================================================================
+
+-- Función para obtener el saldo de un cliente
+CREATE OR REPLACE FUNCTION public.get_saldo_cliente(p_cliente_id UUID)
+RETURNS DECIMAL AS $$
+DECLARE
+    v_total_costos DECIMAL(10,2) := 0;
+    v_total_pagos DECIMAL(10,2) := 0;
+BEGIN
+    -- Sumar todos los repuestos asociados a las órdenes de los vehículos del cliente
+    SELECT COALESCE(SUM(r.costo * r.cantidad), 0)
+    INTO v_total_costos
+    FROM public.vehiculos v
+    JOIN public.ordenes_trabajo o ON v.id = o.vehiculo_id
+    JOIN public.repuestos r ON o.id = r.orden_id
+    WHERE v.cliente_id = p_cliente_id;
+
+    -- Sumar todos los pagos realizados por el cliente
+    SELECT COALESCE(SUM(p.monto), 0)
+    INTO v_total_pagos
+    FROM public.pagos p
+    WHERE p.cliente_id = p_cliente_id;
+
+    -- El saldo es la diferencia (Total Trabajos - Total Pagado)
+    RETURN v_total_costos - v_total_pagos;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- ==============================================================================
+-- SEGURIDAD Y RLS
+-- ==============================================================================
+
 ALTER TABLE public.clientes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.vehiculos ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.ordenes_trabajo ENABLE ROW LEVEL SECURITY;

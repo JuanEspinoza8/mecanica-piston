@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 import ConfirmModal from '../components/ConfirmModal';
 import PagosHistorial from '../components/PagosHistorial';
 import PagoForm from '../components/PagoForm';
+import EstadoCuenta from '../components/EstadoCuenta';
 import { useCliente, useDeleteCliente } from '../hooks/useClientes';
 
 export default function ClienteDetail() {
@@ -157,7 +158,8 @@ export default function ClienteDetail() {
       </div>
 
       {/* Finanzas */}
-      <div className="mt-8">
+      <div className="mt-8 space-y-6">
+        <EstadoCuenta clienteId={id} onRegistrarPago={() => setIsPagoModalOpen(true)} />
         <PagosHistorial clienteId={id} />
       </div>
 
