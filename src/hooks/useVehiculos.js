@@ -1,5 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
+import { cacheData, cacheOne, getCachedData, getCachedById, getCachedByIndex, removeCached, addPendingSync, isOnline, getPendingCount } from '../db/offlineService';
+import useAppStore from '../store/useAppStore';
+import { toast } from 'sonner';
 
 // Keys para react-query
 export const VEHICULOS_KEYS = {
@@ -35,26 +38,42 @@ export function useVehiculos(clienteId = null) {
   return useQuery({
     queryKey: clienteId ? VEHICULOS_KEYS.list(clienteId) : VEHICULOS_KEYS.all,
     queryFn: async () => {
-      let query = supabase
-        .from('vehiculos')
-        .select(`
-          *,
-          clientes (
-            id,
-            nombre,
-            apellido
-          )
-        `)
-        .order('created_at', { ascending: false });
-      
-      if (clienteId) {
-        query = query.eq('cliente_id', clienteId);
-      }
+      try {
+        let query = supabase
+          .from('vehiculos')
+          .select(`
+            *,
+            clientes (
+              id,
+              nombre,
+              apellido
+            )
+          `)
+          .order('created_at', { ascending: false });
+        
+        if (clienteId) {
+          query = query.eq('cliente_id', clienteId);
+        }
 
-      const { data, error } = await query;
-      
-      if (error) throw new Error(error.message);
-      return data.map(mapFromDB);
+        const { data, error } = await query;
+        
+        if (error) throw new Error(error.message);
+        
+        // Cache raw data (antes del map) para offline
+        await cacheData('vehiculos', data);
+        return data.map(mapFromDB);
+      } catch (err) {
+        if (!isOnline()) {
+          let cached;
+          if (clienteId) {
+            cached = await getCachedByIndex('vehiculos', 'cliente_id', clienteId);
+          } else {
+            cached = await getCachedData('vehiculos');
+          }
+          if (cached.length > 0) return cached.map(mapFromDB);
+        }
+        throw err;
+      }
     },
   });
 }
@@ -64,23 +83,33 @@ export function useVehiculo(id) {
   return useQuery({
     queryKey: VEHICULOS_KEYS.detail(id),
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('vehiculos')
-        .select(`
-          *,
-          clientes (
-            id,
-            nombre,
-            apellido,
-            telefono,
-            email
-          )
-        `)
-        .eq('id', id)
-        .single();
-      
-      if (error) throw new Error(error.message);
-      return mapFromDB(data);
+      try {
+        const { data, error } = await supabase
+          .from('vehiculos')
+          .select(`
+            *,
+            clientes (
+              id,
+              nombre,
+              apellido,
+              telefono,
+              email
+            )
+          `)
+          .eq('id', id)
+          .single();
+        
+        if (error) throw new Error(error.message);
+        
+        await cacheOne('vehiculos', data);
+        return mapFromDB(data);
+      } catch (err) {
+        if (!isOnline()) {
+          const cached = await getCachedById('vehiculos', id);
+          if (cached) return mapFromDB(cached);
+        }
+        throw err;
+      }
     },
     enabled: !!id,
   });
@@ -93,6 +122,17 @@ export function useCreateVehiculo() {
   return useMutation({
     mutationFn: async (nuevoVehiculo) => {
       const dbVehiculo = mapToDB(nuevoVehiculo);
+
+      if (!isOnline()) {
+        const tempId = crypto.randomUUID();
+        const vehiculoConId = { ...dbVehiculo, id: tempId, created_at: new Date().toISOString() };
+        await cacheOne('vehiculos', vehiculoConId);
+        await addPendingSync('vehiculos', 'insert', dbVehiculo);
+        useAppStore.getState().setPendingSyncCount(await getPendingCount());
+        toast.info('Sin conexión — Vehículo guardado localmente');
+        return mapFromDB(vehiculoConId);
+      }
+
       const { data, error } = await supabase
         .from('vehiculos')
         .insert([dbVehiculo])
@@ -100,6 +140,7 @@ export function useCreateVehiculo() {
         .single();
       
       if (error) throw new Error(error.message);
+      await cacheOne('vehiculos', data);
       return mapFromDB(data);
     },
     onSuccess: () => {
@@ -115,6 +156,16 @@ export function useUpdateVehiculo() {
   return useMutation({
     mutationFn: async ({ id, ...datos }) => {
       const dbVehiculo = mapToDB(datos);
+
+      if (!isOnline()) {
+        const updated = { ...dbVehiculo, id };
+        await cacheOne('vehiculos', updated);
+        await addPendingSync('vehiculos', 'update', { id, ...dbVehiculo });
+        useAppStore.getState().setPendingSyncCount(await getPendingCount());
+        toast.info('Sin conexión — Cambios guardados localmente');
+        return mapFromDB(updated);
+      }
+
       const { data, error } = await supabase
         .from('vehiculos')
         .update(dbVehiculo)
@@ -123,6 +174,7 @@ export function useUpdateVehiculo() {
         .single();
       
       if (error) throw new Error(error.message);
+      await cacheOne('vehiculos', data);
       return mapFromDB(data);
     },
     onSuccess: (data) => {
@@ -138,12 +190,21 @@ export function useDeleteVehiculo() {
 
   return useMutation({
     mutationFn: async (id) => {
+      if (!isOnline()) {
+        await removeCached('vehiculos', id);
+        await addPendingSync('vehiculos', 'delete', { id });
+        useAppStore.getState().setPendingSyncCount(await getPendingCount());
+        toast.info('Sin conexión — Eliminación pendiente de sincronizar');
+        return id;
+      }
+
       const { error } = await supabase
         .from('vehiculos')
         .delete()
         .eq('id', id);
       
       if (error) throw new Error(error.message);
+      await removeCached('vehiculos', id);
       return id;
     },
     onSuccess: (id) => {

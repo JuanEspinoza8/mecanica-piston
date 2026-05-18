@@ -7,9 +7,13 @@ import Login from './pages/Login'
 import { Toaster } from 'sonner'
 import useAppStore from './store/useAppStore'
 import ConnectionStatus from './components/ConnectionStatus'
+import { useOfflineSync } from './hooks/useOfflineSync'
 
 function App() {
   const theme = useAppStore((state) => state.theme);
+
+  // Sincronización offline: procesa cola de pendientes al reconectar
+  useOfflineSync();
 
   useEffect(() => {
     if (theme === 'dark') {

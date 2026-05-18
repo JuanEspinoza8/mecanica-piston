@@ -1,5 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
+import { cacheData, cacheOne, getCachedData, getCachedById, getCachedByIndex, removeCached, addPendingSync, isOnline, getPendingCount } from '../db/offlineService';
+import useAppStore from '../store/useAppStore';
+import { toast } from 'sonner';
 
 // Keys para React Query
 export const ORDENES_KEYS = {
@@ -48,37 +51,53 @@ export function useOrdenes(vehiculoId) {
   return useQuery({
     queryKey: ORDENES_KEYS.list({ vehiculoId }),
     queryFn: async () => {
-      let query = supabase
-        .from('ordenes_trabajo')
-        .select(`
-          *,
-          vehiculos (
-            id,
-            patente,
-            marca,
-            modelo,
-            anio,
-            clientes (
+      try {
+        let query = supabase
+          .from('ordenes_trabajo')
+          .select(`
+            *,
+            vehiculos (
               id,
-              nombre,
-              apellido,
-              telefono
+              patente,
+              marca,
+              modelo,
+              anio,
+              clientes (
+                id,
+                nombre,
+                apellido,
+                telefono
+              )
+            ),
+            repuestos (
+              costo,
+              cantidad
             )
-          ),
-          repuestos (
-            costo,
-            cantidad
-          )
-        `)
-        .order('created_at', { ascending: false });
+          `)
+          .order('created_at', { ascending: false });
 
-      if (vehiculoId) {
-        query = query.eq('vehiculo_id', vehiculoId);
+        if (vehiculoId) {
+          query = query.eq('vehiculo_id', vehiculoId);
+        }
+
+        const { data, error } = await query;
+        if (error) throw error;
+        
+        // Cache para offline
+        await cacheData('ordenes_trabajo', data);
+        return data.map(mapOrdenFromDB);
+      } catch (err) {
+        if (!isOnline()) {
+          let cached;
+          if (vehiculoId) {
+            cached = await getCachedByIndex('ordenes_trabajo', 'vehiculo_id', vehiculoId);
+          } else {
+            cached = await getCachedData('ordenes_trabajo');
+          }
+          if (cached.length > 0) return cached.map(mapOrdenFromDB);
+        }
+        throw err;
       }
-
-      const { data, error } = await query;
-      if (error) throw error;
-      return data.map(mapOrdenFromDB);
     },
   });
 }
@@ -88,33 +107,42 @@ export function useOrden(id) {
     queryKey: ORDENES_KEYS.detail(id),
     queryFn: async () => {
       if (!id) return null;
-      const { data, error } = await supabase
-        .from('ordenes_trabajo')
-        .select(`
-          *,
-          vehiculos (
-            id,
-            patente,
-            marca,
-            modelo,
-            anio,
-            clientes (
+      try {
+        const { data, error } = await supabase
+          .from('ordenes_trabajo')
+          .select(`
+            *,
+            vehiculos (
               id,
-              nombre,
-              apellido,
-              telefono
+              patente,
+              marca,
+              modelo,
+              anio,
+              clientes (
+                id,
+                nombre,
+                apellido,
+                telefono
+              )
+            ),
+            repuestos (
+              costo,
+              cantidad
             )
-          ),
-          repuestos (
-            costo,
-            cantidad
-          )
-        `)
-        .eq('id', id)
-        .single();
+          `)
+          .eq('id', id)
+          .single();
 
-      if (error) throw error;
-      return mapOrdenFromDB(data);
+        if (error) throw error;
+        await cacheOne('ordenes_trabajo', data);
+        return mapOrdenFromDB(data);
+      } catch (err) {
+        if (!isOnline()) {
+          const cached = await getCachedById('ordenes_trabajo', id);
+          if (cached) return mapOrdenFromDB(cached);
+        }
+        throw err;
+      }
     },
     enabled: !!id,
   });
@@ -125,12 +153,24 @@ export function useCreateOrden() {
   return useMutation({
     mutationFn: async (nuevaOrden) => {
       const dbOrden = mapOrdenToDB(nuevaOrden);
+
+      if (!isOnline()) {
+        const tempId = crypto.randomUUID();
+        const ordenConId = { ...dbOrden, id: tempId, created_at: new Date().toISOString(), estado: dbOrden.estado || 'Pendiente' };
+        await cacheOne('ordenes_trabajo', ordenConId);
+        await addPendingSync('ordenes_trabajo', 'insert', dbOrden);
+        useAppStore.getState().setPendingSyncCount(await getPendingCount());
+        toast.info('Sin conexión — Orden guardada localmente');
+        return ordenConId;
+      }
+
       const { data, error } = await supabase
         .from('ordenes_trabajo')
         .insert([dbOrden])
         .select()
         .single();
       if (error) throw error;
+      await cacheOne('ordenes_trabajo', data);
       return data;
     },
     onSuccess: () => {
@@ -170,13 +210,22 @@ export function useRepuestos(ordenId) {
     queryKey: ORDENES_KEYS.repuestos(ordenId),
     queryFn: async () => {
       if (!ordenId) return [];
-      const { data, error } = await supabase
-        .from('repuestos')
-        .select('*')
-        .eq('orden_id', ordenId)
-        .order('created_at', { ascending: true });
-      if (error) throw error;
-      return data;
+      try {
+        const { data, error } = await supabase
+          .from('repuestos')
+          .select('*')
+          .eq('orden_id', ordenId)
+          .order('created_at', { ascending: true });
+        if (error) throw error;
+        await cacheData('repuestos', data);
+        return data;
+      } catch (err) {
+        if (!isOnline()) {
+          const cached = await getCachedByIndex('repuestos', 'orden_id', ordenId);
+          if (cached.length > 0) return cached;
+        }
+        throw err;
+      }
     },
     enabled: !!ordenId,
   });
@@ -186,17 +235,30 @@ export function useAddRepuesto() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (nuevoRepuesto) => {
+      const payload = {
+        orden_id: nuevoRepuesto.ordenId,
+        nombre: nuevoRepuesto.nombre,
+        costo: nuevoRepuesto.costo,
+        cantidad: nuevoRepuesto.cantidad
+      };
+
+      if (!isOnline()) {
+        const tempId = crypto.randomUUID();
+        const repConId = { ...payload, id: tempId, created_at: new Date().toISOString() };
+        await cacheOne('repuestos', repConId);
+        await addPendingSync('repuestos', 'insert', payload);
+        useAppStore.getState().setPendingSyncCount(await getPendingCount());
+        toast.info('Sin conexión — Repuesto guardado localmente');
+        return repConId;
+      }
+
       const { data, error } = await supabase
         .from('repuestos')
-        .insert([{
-          orden_id: nuevoRepuesto.ordenId,
-          nombre: nuevoRepuesto.nombre,
-          costo: nuevoRepuesto.costo,
-          cantidad: nuevoRepuesto.cantidad
-        }])
+        .insert([payload])
         .select()
         .single();
       if (error) throw error;
+      await cacheOne('repuestos', data);
       return data;
     },
     onSuccess: (data, variables) => {
