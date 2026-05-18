@@ -1,45 +1,20 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, User, CarFront, ArrowLeft, X } from 'lucide-react';
+import { Search, User, CarFront, ArrowLeft, X, Loader2 } from 'lucide-react';
+import { useSearch } from '../hooks/useSearch';
 
 export default function SearchResults() {
   const [query, setQuery] = useState('');
   const inputRef = useRef(null);
   const navigate = useNavigate();
 
-  // Mock de datos para buscar (se reemplazará con datos reales de Supabase)
-  const mockData = [
-    { id: '1', type: 'cliente', name: 'Juan Pérez', detail: '11 1234-5678' },
-    { id: '2', type: 'cliente', name: 'María Gómez', detail: '11 9876-5432' },
-    { id: '3', type: 'cliente', name: 'Carlos López', detail: '11 5555-1234' },
-    { id: '4', type: 'cliente', name: 'Ana Rodríguez', detail: '11 4321-8765' },
-    { id: '101', type: 'vehiculo', name: 'Ford Fiesta 2019', detail: 'AB 123 CD' },
-    { id: '102', type: 'vehiculo', name: 'Toyota Hilux 2021', detail: 'AA 000 BB' },
-    { id: '103', type: 'vehiculo', name: 'Chevrolet Cruze 2020', detail: 'AC 456 EF' },
-    { id: '104', type: 'vehiculo', name: 'Volkswagen Gol 2018', detail: 'AD 789 GH' },
-  ];
+  const { data: resultados, isLoading } = useSearch(query);
+  const clientes = resultados?.clientes || [];
+  const vehiculos = resultados?.vehiculos || [];
 
-  // Foco automático al montar
   useEffect(() => {
-    if (inputRef.current) {
-      inputRef.current.focus();
-    }
+    if (inputRef.current) inputRef.current.focus();
   }, []);
-
-  const resultados = query.length > 1 
-    ? mockData.filter(item => 
-        item.name.toLowerCase().includes(query.toLowerCase()) || 
-        item.detail.toLowerCase().includes(query.toLowerCase())
-      )
-    : [];
-
-  const clientes = resultados.filter(r => r.type === 'cliente');
-  const vehiculos = resultados.filter(r => r.type === 'vehiculo');
-
-  const handleSelect = (item) => {
-    if (item.type === 'cliente') navigate(`/clientes/${item.id}`);
-    if (item.type === 'vehiculo') navigate(`/vehiculos/${item.id}`);
-  };
 
   return (
     <div className="min-h-screen bg-neutral-50 dark:bg-neutral-950 pb-20">
@@ -55,7 +30,11 @@ export default function SearchResults() {
           </button>
 
           <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-400 dark:text-red-500" />
+            {isLoading ? (
+              <Loader2 className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-red-500 animate-spin" />
+            ) : (
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-400 dark:text-red-500" />
+            )}
             <input 
               ref={inputRef}
               type="text"
@@ -94,8 +73,16 @@ export default function SearchResults() {
           </div>
         )}
 
+        {/* Cargando */}
+        {query.length > 1 && isLoading && (
+          <div className="flex flex-col items-center justify-center py-20 text-center">
+            <Loader2 className="w-10 h-10 text-red-500 animate-spin mb-4" />
+            <p className="text-neutral-500 dark:text-neutral-400 text-sm font-medium">Buscando...</p>
+          </div>
+        )}
+
         {/* Sin resultados */}
-        {query.length > 1 && resultados.length === 0 && (
+        {query.length > 1 && !isLoading && clientes.length === 0 && vehiculos.length === 0 && (
           <div className="flex flex-col items-center justify-center py-20 text-center">
             <div className="w-16 h-16 bg-red-50 dark:bg-red-950/30 rounded-2xl flex items-center justify-center mb-4">
               <Search className="w-8 h-8 text-red-300 dark:text-red-600" />
@@ -116,10 +103,10 @@ export default function SearchResults() {
               Clientes ({clientes.length})
             </h3>
             <div className="space-y-2">
-              {clientes.map((item) => (
+              {clientes.map((c) => (
                 <button
-                  key={`cliente-${item.id}`}
-                  onClick={() => handleSelect(item)}
+                  key={c.id}
+                  onClick={() => navigate(`/clientes/${c.id}`)}
                   className="w-full text-left flex items-center p-4 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-xl hover:border-red-300 dark:hover:border-red-600/40 transition-all group active:scale-[0.98]"
                 >
                   <div className="bg-blue-50 dark:bg-blue-950/30 p-2.5 rounded-lg mr-4 group-hover:bg-blue-100 dark:group-hover:bg-blue-900/40 transition-colors shrink-0">
@@ -127,10 +114,10 @@ export default function SearchResults() {
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="font-semibold text-neutral-900 dark:text-white group-hover:text-red-600 dark:group-hover:text-red-400 transition-colors truncate">
-                      {item.name}
+                      {c.nombre} {c.apellido || ''}
                     </p>
                     <p className="text-sm text-neutral-500 dark:text-neutral-400 truncate">
-                      📞 {item.detail}
+                      {c.telefono ? `📞 ${c.telefono}` : c.email || 'Sin datos de contacto'}
                     </p>
                   </div>
                 </button>
@@ -146,10 +133,10 @@ export default function SearchResults() {
               Vehículos ({vehiculos.length})
             </h3>
             <div className="space-y-2">
-              {vehiculos.map((item) => (
+              {vehiculos.map((v) => (
                 <button
-                  key={`vehiculo-${item.id}`}
-                  onClick={() => handleSelect(item)}
+                  key={v.id}
+                  onClick={() => navigate(`/vehiculos/${v.id}`)}
                   className="w-full text-left flex items-center p-4 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-xl hover:border-red-300 dark:hover:border-red-600/40 transition-all group active:scale-[0.98]"
                 >
                   <div className="bg-green-50 dark:bg-green-950/30 p-2.5 rounded-lg mr-4 group-hover:bg-green-100 dark:group-hover:bg-green-900/40 transition-colors shrink-0">
@@ -157,10 +144,10 @@ export default function SearchResults() {
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="font-semibold text-neutral-900 dark:text-white group-hover:text-red-600 dark:group-hover:text-red-400 transition-colors truncate">
-                      {item.name}
+                      {v.marca} {v.modelo} — <span className="tracking-widest">{v.patente}</span>
                     </p>
                     <p className="text-sm text-neutral-500 dark:text-neutral-400 truncate">
-                      🚗 {item.detail}
+                      {v.clientes ? `Dueño: ${v.clientes.nombre} ${v.clientes.apellido || ''}` : `Año: ${v.anio || ''}`}
                     </p>
                   </div>
                 </button>

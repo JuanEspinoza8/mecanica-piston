@@ -43,6 +43,17 @@ export function useFileUpload() {
     mutationFn: async ({ file, ordenId, tipo }) => {
       let fileToUpload = file;
       
+      // Validar documentos PDF
+      if (tipo === 'documento') {
+        if (!file.name.toLowerCase().endsWith('.pdf')) {
+          throw new Error('Solo se aceptan archivos PDF como documentos');
+        }
+        const maxSizeMB = 5;
+        if (file.size > maxSizeMB * 1024 * 1024) {
+          throw new Error(`El archivo PDF no puede superar los ${maxSizeMB} MB`);
+        }
+      }
+      
       // Comprimir solo si es imagen (no PDF)
       if (tipo === 'imagen' && file.type.startsWith('image/')) {
         const options = {

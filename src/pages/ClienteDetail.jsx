@@ -89,7 +89,7 @@ export default function ClienteDetail() {
         {/* Fondo decorativo */}
         <div className="absolute -right-10 -top-10 w-40 h-40 bg-red-500/5 dark:bg-red-500/10 rounded-full blur-3xl pointer-events-none"></div>
 
-        <h2 className="text-3xl font-black text-neutral-900 dark:text-white tracking-tight mb-6">{cliente.nombre}</h2>
+        <h2 className="text-3xl font-black text-neutral-900 dark:text-white tracking-tight mb-6">{cliente.nombre} {cliente.apellido || ''}</h2>
         
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="space-y-4">
