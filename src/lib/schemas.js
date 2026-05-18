@@ -6,6 +6,11 @@ export const clienteSchema = z.object({
     .min(2, 'El nombre debe tener al menos 2 caracteres')
     .max(100, 'El nombre es demasiado largo')
     .regex(/^[a-záéíóúüñA-ZÁÉÍÓÚÜÑ\s]+$/, 'El nombre solo puede contener letras'),
+  apellido: z.string()
+    .max(100, 'El apellido es demasiado largo')
+    .regex(/^[a-záéíóúüñA-ZÁÉÍÓÚÜÑ\s]*$/, 'El apellido solo puede contener letras')
+    .optional()
+    .or(z.literal('')),
   telefono: z.string()
     .min(8, 'El teléfono debe tener al menos 8 dígitos')
     .max(20, 'Teléfono demasiado largo')
@@ -24,6 +29,14 @@ export const ordenSchema = z.object({
   sintoma: z.string()
     .min(10, 'Describa el problema con más detalle (mínimo 10 caracteres)')
     .max(500, 'La descripción es demasiado larga'),
+  diagnostico: z.string()
+    .max(500, 'El diagnóstico es demasiado largo')
+    .optional()
+    .or(z.literal('')),
+  fecha_ingreso: z.string().optional(),
+  estado: z.enum(['Pendiente', 'En proceso', 'Esperando repuesto', 'Terminado', 'Entregado'], {
+    errorMap: () => ({ message: 'Seleccione un estado válido' })
+  }).optional(),
 });
 
 // Esquema de validación para Vehículos

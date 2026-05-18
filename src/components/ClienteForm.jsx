@@ -9,6 +9,7 @@ export default function ClienteForm({ defaultValues, onSubmit, isSubmitting }) {
     resolver: zodResolver(clienteSchema),
     defaultValues: defaultValues || {
       nombre: '',
+      apellido: '',
       telefono: '',
       email: '',
       direccion: ''
@@ -21,21 +22,41 @@ export default function ClienteForm({ defaultValues, onSubmit, isSubmitting }) {
       {/* Tarjeta del Formulario */}
       <div className="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 p-6 shadow-sm space-y-4">
         
-        {/* Campo: Nombre */}
-        <div>
-          <label className="block text-sm font-semibold text-neutral-700 dark:text-neutral-300 mb-1">Nombre Completo *</label>
-          <div className="relative">
-            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <User className="h-5 w-5 text-neutral-400 dark:text-neutral-500" />
+        {/* Campos: Nombre y Apellido */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {/* Campo: Nombre */}
+          <div>
+            <label className="block text-sm font-semibold text-neutral-700 dark:text-neutral-300 mb-1">Nombre *</label>
+            <div className="relative">
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <User className="h-5 w-5 text-neutral-400 dark:text-neutral-500" />
+              </div>
+              <input
+                type="text"
+                {...register('nombre')}
+                className={`block w-full pl-10 pr-3 py-2 border ${errors.nombre ? 'border-red-500 focus:ring-red-500' : 'border-neutral-300 dark:border-neutral-700 focus:ring-black dark:focus:ring-red-500'} rounded-xl focus:outline-none focus:ring-1 transition-colors bg-transparent dark:bg-neutral-950 dark:text-white`}
+                placeholder="Ej: Juan"
+              />
             </div>
-            <input
-              type="text"
-              {...register('nombre')}
-              className={`block w-full pl-10 pr-3 py-2 border ${errors.nombre ? 'border-red-500 focus:ring-red-500' : 'border-neutral-300 dark:border-neutral-700 focus:ring-black dark:focus:ring-red-500'} rounded-xl focus:outline-none focus:ring-1 transition-colors bg-transparent dark:bg-neutral-950 dark:text-white`}
-              placeholder="Ej: Juan Pérez"
-            />
+            {errors.nombre && <p className="mt-1 text-sm text-red-600 dark:text-red-400">{errors.nombre.message}</p>}
           </div>
-          {errors.nombre && <p className="mt-1 text-sm text-red-600 dark:text-red-400">{errors.nombre.message}</p>}
+
+          {/* Campo: Apellido */}
+          <div>
+            <label className="block text-sm font-semibold text-neutral-700 dark:text-neutral-300 mb-1">Apellido</label>
+            <div className="relative">
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <User className="h-5 w-5 text-neutral-400 dark:text-neutral-500" />
+              </div>
+              <input
+                type="text"
+                {...register('apellido')}
+                className={`block w-full pl-10 pr-3 py-2 border ${errors.apellido ? 'border-red-500 focus:ring-red-500' : 'border-neutral-300 dark:border-neutral-700 focus:ring-black dark:focus:ring-red-500'} rounded-xl focus:outline-none focus:ring-1 transition-colors bg-transparent dark:bg-neutral-950 dark:text-white`}
+                placeholder="Ej: Pérez"
+              />
+            </div>
+            {errors.apellido && <p className="mt-1 text-sm text-red-600 dark:text-red-400">{errors.apellido.message}</p>}
+          </div>
         </div>
 
         {/* Campo: Teléfono */}
