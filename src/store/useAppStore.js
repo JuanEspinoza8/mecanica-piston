@@ -13,6 +13,10 @@ const useAppStore = create(
       openSearch: () => set({ isSearchOpen: true }),
       closeSearch: () => set({ isSearchOpen: false }),
 
+      // Contador de operaciones offline pendientes de sincronización
+      pendingSyncCount: 0,
+      setPendingSyncCount: (count) => set({ pendingSyncCount: count }),
+
       // Autenticación (simulada - Juan conectará con Supabase Auth)
       user: null,
       isAuthenticated: false,

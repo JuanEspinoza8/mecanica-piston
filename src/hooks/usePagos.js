@@ -1,20 +1,30 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
 import { toast } from 'sonner';
+import { cacheData, getCachedByIndex, isOnline } from '../db/offlineService';
 
 // Hook para obtener el historial de pagos de un cliente
 export function usePagos(clienteId) {
   return useQuery({
     queryKey: ['pagos', clienteId],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('pagos')
-        .select('*')
-        .eq('cliente_id', clienteId)
-        .order('fecha', { ascending: false });
+      try {
+        const { data, error } = await supabase
+          .from('pagos')
+          .select('*')
+          .eq('cliente_id', clienteId)
+          .order('fecha', { ascending: false });
 
-      if (error) throw error;
-      return data;
+        if (error) throw error;
+        await cacheData('pagos', data);
+        return data;
+      } catch (err) {
+        if (!isOnline()) {
+          const cached = await getCachedByIndex('pagos', 'cliente_id', clienteId);
+          if (cached.length > 0) return cached;
+        }
+        throw err;
+      }
     },
     enabled: !!clienteId,
   });
