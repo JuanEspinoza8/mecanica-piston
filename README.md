@@ -5,7 +5,7 @@
 Administra clientes, vehículos, órdenes de trabajo, repuestos, cobranzas y archivos multimedia desde cualquier dispositivo, incluso sin conexión a internet.
 
 ![Version](https://img.shields.io/badge/version-1.0.0-red?style=flat-square)
-![License](https://img.shields.io/badge/license-Private-gray?style=flat-square)
+![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)
 ![Status](https://img.shields.io/badge/status-Production-brightgreen?style=flat-square)
 
 ---
