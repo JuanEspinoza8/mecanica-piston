@@ -1,16 +1,20 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Home, Users, ClipboardList, Search, CarFront, Moon, Sun, LogOut } from 'lucide-react';
+import { Home, Users, ClipboardList, Search, CarFront, Moon, Sun, LogOut, TrendingUp } from 'lucide-react';
 import BottomNav from './BottomNav';
 import useAppStore from '../store/useAppStore';
 import GlobalSearch from './GlobalSearch';
+import { supabase } from '../lib/supabase';
+
+const APP_VERSION = __APP_VERSION__;
 
 export default function Layout({ children }) {
   const location = useLocation();
   const navigate = useNavigate();
-  const { theme, toggleTheme, openSearch, logout, user } = useAppStore();
+  const { theme, toggleTheme, openSearch, clearAuth, user } = useAppStore();
 
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    clearAuth();
     navigate('/login');
   };
   
@@ -19,6 +23,7 @@ export default function Layout({ children }) {
     { name: 'Clientes', path: '/clientes', icon: Users },
     { name: 'Vehículos', path: '/vehiculos', icon: CarFront },
     { name: 'Órdenes', path: '/ordenes', icon: ClipboardList },
+    { name: 'Economía', path: '/economia', icon: TrendingUp },
   ];
 
   return (
@@ -71,8 +76,13 @@ export default function Layout({ children }) {
           })}
         </nav>
 
-        {/* Botón Cerrar Sesión */}
-        <div className="p-4 border-t border-neutral-800 dark:border-red-900/30">
+        {/* Usuario y Cerrar Sesión */}
+        <div className="p-4 border-t border-neutral-800 dark:border-red-900/30 space-y-2">
+          {user?.email && (
+            <p className="px-4 text-xs text-neutral-500 font-medium truncate" title={user.email}>
+              {user.email}
+            </p>
+          )}
           <button
             onClick={handleLogout}
             className="group flex items-center w-full rounded-xl px-4 py-3 text-neutral-500 hover:bg-red-950/30 hover:text-red-400 transition-all duration-300"
@@ -80,6 +90,7 @@ export default function Layout({ children }) {
             <LogOut className="mr-3 h-5 w-5 group-hover:scale-110 transition-transform" />
             <span className="font-medium tracking-wide text-sm">Cerrar Sesión</span>
           </button>
+          <p className="px-4 pt-2 text-[10px] text-neutral-600 dark:text-neutral-700 font-mono tracking-wider">v{APP_VERSION}</p>
         </div>
       </aside>
 

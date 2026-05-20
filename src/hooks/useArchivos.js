@@ -36,6 +36,45 @@ export function useArchivos(ordenId) {
   });
 }
 
+// Archivos de todas las órdenes de un vehículo
+export function useArchivosVehiculo(vehiculoId) {
+  return useQuery({
+    queryKey: ['archivos', 'vehiculo', vehiculoId],
+    queryFn: async () => {
+      if (!vehiculoId) return [];
+      // Get order IDs for this vehicle
+      const { data: ordenes } = await supabase
+        .from('ordenes_trabajo')
+        .select('id, descripcion')
+        .eq('vehiculo_id', vehiculoId);
+      if (!ordenes || ordenes.length === 0) return [];
+
+      const ordenIds = ordenes.map(o => o.id);
+      const { data, error } = await supabase
+        .from('archivos')
+        .select('*')
+        .in('orden_id', ordenIds)
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+
+      const ordenMap = Object.fromEntries(ordenes.map(o => [o.id, o.descripcion]));
+
+      return data.map(archivo => {
+        const { data: publicUrlData } = supabase.storage
+          .from('archivos')
+          .getPublicUrl(archivo.ruta_storage);
+        return {
+          ...archivo,
+          url: publicUrlData.publicUrl,
+          ordenDescripcion: ordenMap[archivo.orden_id] || '',
+          displayOrdenId: `ORD-${archivo.orden_id.substring(0, 4).toUpperCase()}`,
+        };
+      });
+    },
+    enabled: !!vehiculoId,
+  });
+}
+
 export function useFileUpload() {
   const queryClient = useQueryClient();
   

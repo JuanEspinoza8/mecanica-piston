@@ -1,9 +1,16 @@
 import { useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { ArrowLeft, CarFront, User, Calendar, Palette, Hash, ClipboardList, Plus, ChevronRight, Loader2, Trash2 } from 'lucide-react';
-import { useVehiculo, useDeleteVehiculo } from '../hooks/useVehiculos';
+import { ArrowLeft, CarFront, User, Calendar, Palette, Hash, ClipboardList, Plus, ChevronRight, Loader2, Trash2, History, DollarSign, Camera, FileText, Download, Edit3, X } from 'lucide-react';
+import { useVehiculo, useDeleteVehiculo, useUpdateVehiculo } from '../hooks/useVehiculos';
 import { useOrdenes } from '../hooks/useOrdenes';
+import { useHistorialModificaciones } from '../hooks/useHistorial';
+import { useDeudasVehiculo } from '../hooks/useDeudas';
+import { useArchivosVehiculo } from '../hooks/useArchivos';
 import ConfirmModal from '../components/ConfirmModal';
+import HistorialTimeline from '../components/HistorialTimeline';
+import DeudaCard from '../components/DeudaCard';
+import ImageViewerModal from '../components/ImageViewerModal';
+import VehiculoForm from '../components/VehiculoForm';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 
@@ -13,7 +20,13 @@ export default function VehiculoDetail() {
   
   const { data: vehiculo, isLoading, isError } = useVehiculo(id);
   const { mutateAsync: deleteVehiculo, isPending: isDeleting } = useDeleteVehiculo();
+  const { mutateAsync: updateVehiculo, isPending: isUpdating } = useUpdateVehiculo();
+  const { data: deudasVehiculo = [] } = useDeudasVehiculo(id);
+  const { data: archivosVehiculo = [] } = useArchivosVehiculo(id);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [viewerOpen, setViewerOpen] = useState(false);
+  const [viewerIndex, setViewerIndex] = useState(0);
 
   const handleDelete = async () => {
     try {
@@ -28,6 +41,9 @@ export default function VehiculoDetail() {
   // Traer las órdenes reales del vehículo
   const { data: ordenesData = [], isLoading: isLoadingOrdenes } = useOrdenes(id);
 
+  // Historial de modificaciones
+  const { data: historial = [], isLoading: isLoadingHistorial } = useHistorialModificaciones(id);
+
   // Mapear los datos de BD al formato esperado por la UI
   const ordenes = ordenesData.map(orden => ({
     id: orden.id,
@@ -40,7 +56,7 @@ export default function VehiculoDetail() {
   const getEstadoBadge = (estado) => {
     switch(estado) {
       case 'Terminado': return 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 border-green-200 dark:border-green-800/50';
-      case 'En proceso': return 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-800/50';
+      case 'En proceso': return 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 border-red-200 dark:border-red-800/50';
       default: return 'bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 border-neutral-200 dark:border-neutral-700';
     }
   };
@@ -69,13 +85,22 @@ export default function VehiculoDetail() {
           </Link>
           <h1 className="text-2xl font-bold text-neutral-900 dark:text-white">Perfil del Vehículo</h1>
         </div>
-        <button
-          onClick={() => setIsDeleteModalOpen(true)}
-          className="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-colors"
-          title="Eliminar Vehículo"
-        >
-          <Trash2 className="w-5 h-5" />
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setIsEditModalOpen(true)}
+            className="flex items-center bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 hover:border-black dark:hover:border-neutral-600 text-neutral-700 dark:text-neutral-300 font-semibold py-2 px-4 rounded-xl transition-all shadow-sm"
+          >
+            <Edit3 className="w-4 h-4 mr-2" />
+            Editar
+          </button>
+          <button
+            onClick={() => setIsDeleteModalOpen(true)}
+            className="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-colors"
+            title="Eliminar Vehículo"
+          >
+            <Trash2 className="w-5 h-5" />
+          </button>
+        </div>
       </div>
 
       {/* Tarjeta Principal del Vehículo */}
@@ -157,6 +182,101 @@ export default function VehiculoDetail() {
         )}
       </div>
 
+      {/* Fotos y Archivos del vehículo */}
+      {archivosVehiculo.length > 0 && (() => {
+        const fotos = archivosVehiculo.filter(a => a.tipo === 'imagen');
+        const documentos = archivosVehiculo.filter(a => a.tipo !== 'imagen');
+        return (
+          <div>
+            <h3 className="text-xl font-bold text-neutral-900 dark:text-white flex items-center mb-4 mt-8">
+              <Camera className="w-5 h-5 mr-2 text-neutral-500" />
+              Fotos y Archivos
+            </h3>
+
+            {/* Galería de fotos */}
+            {fotos.length > 0 && (
+              <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2 mb-4">
+                {fotos.map((foto, idx) => (
+                  <div
+                    key={foto.id}
+                    onClick={() => { setViewerIndex(idx); setViewerOpen(true); }}
+                    className="aspect-square rounded-xl overflow-hidden cursor-pointer border border-neutral-200 dark:border-neutral-800 hover:border-red-400 transition-all hover:shadow-md group relative"
+                  >
+                    <img src={foto.url} alt="" className="w-full h-full object-cover" loading="lazy" />
+                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors" />
+                    <span className="absolute bottom-1 left-1 text-[8px] font-bold text-white bg-black/60 px-1.5 py-0.5 rounded-full">
+                      {foto.displayOrdenId}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Documentos */}
+            {documentos.length > 0 && (
+              <div className="space-y-2">
+                {documentos.map(doc => (
+                  <a
+                    key={doc.id}
+                    href={doc.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center justify-between p-3 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-xl hover:border-red-400 transition-all text-sm group"
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <FileText className="w-4 h-4 text-neutral-400 shrink-0" />
+                      <span className="font-medium text-neutral-800 dark:text-neutral-200 truncate">{doc.nombre_original || 'Documento'}</span>
+                      <span className="text-[10px] text-neutral-400 shrink-0">{doc.displayOrdenId}</span>
+                    </div>
+                    <Download className="w-4 h-4 text-neutral-400 group-hover:text-red-500 transition-colors shrink-0" />
+                  </a>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
+      {/* Image viewer modal */}
+      <ImageViewerModal
+        isOpen={viewerOpen}
+        images={archivosVehiculo.filter(a => a.tipo === 'imagen')}
+        initialIndex={viewerIndex}
+        onClose={() => setViewerOpen(false)}
+      />
+
+      {/* Deudas asociadas a órdenes de este vehículo */}
+      {deudasVehiculo.length > 0 && (
+        <div>
+          <h3 className="text-xl font-bold text-neutral-900 dark:text-white flex items-center mb-4 mt-8">
+            <DollarSign className="w-5 h-5 mr-2 text-neutral-500" />
+            Deudas Asociadas
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {deudasVehiculo.map(deuda => (
+              <DeudaCard key={deuda.id} deuda={deuda} />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Historial de Modificaciones */}
+      <div>
+        <div className="flex items-center justify-between mb-4 mt-8">
+          <h3 className="text-xl font-bold text-neutral-900 dark:text-white flex items-center">
+            <History className="w-5 h-5 mr-2 text-neutral-500 dark:text-neutral-400" />
+            Historial de Modificaciones
+          </h3>
+        </div>
+        {isLoadingHistorial ? (
+          <div className="flex justify-center py-10">
+            <Loader2 className="w-6 h-6 animate-spin text-neutral-400" />
+          </div>
+        ) : (
+          <HistorialTimeline historial={historial} />
+        )}
+      </div>
+
       <ConfirmModal
         isOpen={isDeleteModalOpen}
         onClose={() => setIsDeleteModalOpen(false)}
@@ -165,6 +285,45 @@ export default function VehiculoDetail() {
         mensaje={`¿Estás seguro que querés eliminar el vehículo ${vehiculo.patente}? Esta acción no se puede deshacer y borrará todo su historial.`}
         isLoading={isDeleting}
       />
+
+      {/* Modal Editar Vehículo */}
+      {isEditModalOpen && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200 p-4 overflow-y-auto">
+          <div className="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 shadow-2xl w-full max-w-lg animate-in zoom-in-95 duration-200 my-8">
+            <div className="flex items-center justify-between p-6 border-b border-neutral-100 dark:border-neutral-800">
+              <h3 className="text-lg font-bold text-neutral-900 dark:text-white flex items-center">
+                <Edit3 className="w-5 h-5 mr-2 text-red-500" /> Editar Vehículo
+              </h3>
+              <button onClick={() => setIsEditModalOpen(false)} className="p-2 text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 rounded-full hover:bg-neutral-200 dark:hover:bg-neutral-800 transition-colors">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-6">
+              <VehiculoForm
+                hideClienteField
+                defaultValues={{
+                  patente: vehiculo.patente || '',
+                  marca: vehiculo.marca || '',
+                  modelo: vehiculo.modelo || '',
+                  año: vehiculo.año || new Date().getFullYear(),
+                  color: vehiculo.color || '',
+                  clienteId: vehiculo.cliente?.id || vehiculo.cliente_id || '',
+                }}
+                onSubmit={async (data) => {
+                  try {
+                    await updateVehiculo({ id: vehiculo.id, ...data, clienteId: vehiculo.cliente?.id || vehiculo.cliente_id });
+                    toast.success('Vehículo actualizado');
+                    setIsEditModalOpen(false);
+                  } catch (e) {
+                    toast.error('Error al actualizar: ' + e.message);
+                  }
+                }}
+                isSubmitting={isUpdating}
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

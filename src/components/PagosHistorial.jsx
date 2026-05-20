@@ -1,9 +1,13 @@
-import { DollarSign, Calendar, FileText, CreditCard, Receipt, Wallet, ArrowUpRight, Loader2, Download } from 'lucide-react';
+import { useState } from 'react';
+import { Calendar, CreditCard, Receipt, Wallet, ArrowUpRight, Loader2, Download, Trash2 } from 'lucide-react';
 import { format } from 'date-fns';
-import { usePagos } from '../hooks/usePagos';
+import { usePagos, useDeletePago } from '../hooks/usePagos';
+import ConfirmModal from './ConfirmModal';
 
 export default function PagosHistorial({ clienteId }) {
   const { data: pagos, isLoading } = usePagos(clienteId);
+  const { mutateAsync: deletePago, isPending: isDeleting } = useDeletePago();
+  const [deleteTarget, setDeleteTarget] = useState(null);
 
   const getMetodoColor = (metodo) => {
     switch (metodo) {
@@ -37,72 +41,105 @@ export default function PagosHistorial({ clienteId }) {
   }
 
   return (
-    <div className="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 overflow-hidden shadow-sm">
-      <div className="px-6 py-4 border-b border-neutral-200 dark:border-neutral-800 flex justify-between items-center bg-neutral-50 dark:bg-neutral-950">
-        <h3 className="text-lg font-bold text-neutral-900 dark:text-white flex items-center">
-          <Wallet className="w-5 h-5 mr-2 text-neutral-500" />
-          Historial de Pagos
-        </h3>
-        <span className="bg-black dark:bg-white text-white dark:text-black text-xs font-bold px-2 py-1 rounded-full">
-          {pagos.length} registros
-        </span>
-      </div>
+    <>
+      <div className="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 overflow-hidden shadow-sm">
+        <div className="px-6 py-4 border-b border-neutral-200 dark:border-neutral-800 flex justify-between items-center bg-neutral-50 dark:bg-neutral-950">
+          <h3 className="text-lg font-bold text-neutral-900 dark:text-white flex items-center">
+            <Wallet className="w-5 h-5 mr-2 text-neutral-500" />
+            Historial de Pagos
+          </h3>
+          <span className="bg-black dark:bg-white text-white dark:text-black text-xs font-bold px-2 py-1 rounded-full">
+            {pagos.length} registros
+          </span>
+        </div>
 
-      <div className="divide-y divide-neutral-100 dark:divide-neutral-800/50">
-        {pagos.map(pago => (
-          <div key={pago.id} className="p-4 sm:p-6 hover:bg-neutral-50 dark:hover:bg-neutral-900/50 transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            
-            <div className="flex items-start gap-4">
-              <div className="bg-green-50 dark:bg-green-950/30 p-3 rounded-xl shrink-0">
-                <ArrowUpRight className="w-6 h-6 text-green-600 dark:text-green-500" />
-              </div>
+        <div className="divide-y divide-neutral-100 dark:divide-neutral-800/50">
+          {pagos.map(pago => (
+            <div key={pago.id} className="p-4 sm:p-6 hover:bg-neutral-50 dark:hover:bg-neutral-900/50 transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-4 group">
               
-              <div>
-                <div className="flex flex-wrap items-center gap-2 mb-1">
-                  <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold border ${getMetodoColor(pago.metodo_pago)}`}>
-                    {pago.metodo_pago}
-                  </span>
-                  
-                  {pago.es_cuota && (
-                    <span className="px-2.5 py-0.5 rounded-full text-xs font-bold border border-orange-200 bg-orange-100 text-orange-700 dark:border-orange-800/50 dark:bg-orange-900/30 dark:text-orange-400 flex items-center">
-                      Cuota {pago.cuota_actual} de {pago.total_cuotas}
-                    </span>
-                  )}
+              <div className="flex items-start gap-4">
+                <div className="bg-green-50 dark:bg-green-950/30 p-3 rounded-xl shrink-0">
+                  <ArrowUpRight className="w-6 h-6 text-green-600 dark:text-green-500" />
                 </div>
                 
-                {pago.nota && (
-                  <p className="text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1 line-clamp-1">
-                    {pago.nota}
-                  </p>
-                )}
-                
-                <div className="flex items-center text-xs text-neutral-500 dark:text-neutral-400 font-medium">
-                  <Calendar className="w-3.5 h-3.5 mr-1" />
-                  {format(new Date(pago.fecha), 'dd/MM/yyyy')}
+                <div>
+                  <div className="flex flex-wrap items-center gap-2 mb-1">
+                    <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold border ${getMetodoColor(pago.metodo_pago)}`}>
+                      {pago.metodo_pago}
+                    </span>
+                    {pago.deudas && (
+                      <span className="px-2.5 py-0.5 rounded-full text-xs font-bold border border-neutral-200 bg-neutral-100 text-neutral-600 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-400">
+                        {pago.deudas.concepto}
+                      </span>
+                    )}
+                  </div>
+                  
+                  {pago.nota && (
+                    <p className="text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1 line-clamp-1">
+                      {pago.nota}
+                    </p>
+                  )}
+                  
+                  <div className="flex items-center text-xs text-neutral-500 dark:text-neutral-400 font-medium">
+                    <Calendar className="w-3.5 h-3.5 mr-1" />
+                    {format(new Date(pago.fecha), 'dd/MM/yyyy')}
+                  </div>
                 </div>
               </div>
-            </div>
 
-            <div className="text-right sm:text-right shrink-0 flex flex-col items-end gap-2">
-              <span className="text-lg font-black text-neutral-900 dark:text-white">
-                ${Number(pago.monto).toLocaleString('es-AR')}
-              </span>
-              {pago.comprobante_url && (
-                <a 
-                  href={pago.comprobante_url} 
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  className="flex items-center text-xs font-bold text-neutral-600 dark:text-neutral-400 hover:text-black dark:hover:text-white transition-colors bg-neutral-100 dark:bg-neutral-800 px-2 py-1 rounded"
-                >
-                  <Download className="w-3 h-3 mr-1" />
-                  PDF
-                </a>
-              )}
-            </div>
+              <div className="text-right sm:text-right shrink-0 flex flex-col items-end gap-2">
+                <span className="text-lg font-black text-neutral-900 dark:text-white">
+                  ${Number(pago.monto).toLocaleString('es-AR')}
+                </span>
+                <div className="flex items-center gap-2">
+                  {pago.comprobante_url && (
+                    <a 
+                      href={pago.comprobante_url} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="flex items-center text-xs font-bold text-neutral-600 dark:text-neutral-400 hover:text-black dark:hover:text-white transition-colors bg-neutral-100 dark:bg-neutral-800 px-2 py-1 rounded"
+                    >
+                      <Download className="w-3 h-3 mr-1" />
+                      PDF
+                    </a>
+                  )}
+                  <button
+                    onClick={() => setDeleteTarget(pago)}
+                    className="opacity-0 group-hover:opacity-100 flex items-center text-xs font-bold text-red-500 hover:text-red-600 transition-all bg-red-50 dark:bg-red-950/30 px-2 py-1 rounded"
+                    title="Eliminar pago"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                  </button>
+                </div>
+              </div>
 
-          </div>
-        ))}
+            </div>
+          ))}
+        </div>
       </div>
-    </div>
+
+      {/* Confirmar eliminar pago */}
+      <ConfirmModal
+        isOpen={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={async () => {
+          if (deleteTarget) {
+            try {
+              await deletePago({
+                id: deleteTarget.id,
+                cliente_id: deleteTarget.cliente_id,
+                deuda_id: deleteTarget.deuda_id,
+                monto: deleteTarget.monto,
+              });
+              setDeleteTarget(null);
+            } catch (e) {}
+          }
+        }}
+        isLoading={isDeleting}
+        titulo="¿Eliminar este pago?"
+        mensaje={`Se eliminará el pago de $${Number(deleteTarget?.monto || 0).toLocaleString('es-AR')}. Si estaba vinculado a una deuda, el saldo pendiente se actualizará.`}
+        textoConfirmar="Sí, eliminar pago"
+      />
+    </>
   );
 }

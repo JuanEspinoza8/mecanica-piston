@@ -1,11 +1,12 @@
-import { usePagos, useSaldoCliente } from '../hooks/usePagos';
-import { DollarSign, AlertCircle, CheckCircle2, Loader2 } from 'lucide-react';
+import { DollarSign, AlertCircle, CheckCircle2, Loader2, Plus } from 'lucide-react';
+import { useDeudas } from '../hooks/useDeudas';
+import { usePagos } from '../hooks/usePagos';
 
-export default function EstadoCuenta({ clienteId, onRegistrarPago }) {
-  const { data: saldo, isLoading: isLoadingSaldo } = useSaldoCliente(clienteId);
-  const { data: pagos, isLoading: isLoadingPagos } = usePagos(clienteId);
+export default function EstadoCuenta({ clienteId, onRegistrarPago, onCrearDeuda }) {
+  const { data: deudas = [], isLoading: isLoadingDeudas } = useDeudas(clienteId);
+  const { data: pagos = [], isLoading: isLoadingPagos } = usePagos(clienteId);
 
-  if (isLoadingSaldo || isLoadingPagos) {
+  if (isLoadingDeudas || isLoadingPagos) {
     return (
       <div className="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 p-8 flex flex-col justify-center items-center">
         <Loader2 className="w-8 h-8 animate-spin text-neutral-400 mb-4" />
@@ -14,14 +15,14 @@ export default function EstadoCuenta({ clienteId, onRegistrarPago }) {
     );
   }
 
-  // Calculamos totales basados en la RPC y la lista de pagos
-  const totalPagado = pagos?.reduce((sum, pago) => sum + Number(pago.monto), 0) || 0;
-  const saldoPendiente = saldo || 0;
-  
-  // Como la RPC devuelve: Saldo = Costos Totales - Pagos Totales
-  // Entonces: Costos Totales = Saldo + Pagos Totales
-  const totalTrabajos = Number(saldoPendiente) + totalPagado; 
+  // Totales basados en deudas
+  const totalDeuda = deudas.reduce((sum, d) => sum + Number(d.monto_total), 0);
+  const totalPagado = deudas.reduce((sum, d) => sum + Number(d.monto_pagado), 0);
+  const saldoPendiente = deudas
+    .filter(d => d.estado !== 'pagada')
+    .reduce((sum, d) => sum + (Number(d.monto_total) - Number(d.monto_pagado)), 0);
 
+  const deudasActivas = deudas.filter(d => d.estado !== 'pagada').length;
   const estaAlDia = saldoPendiente <= 0;
 
   return (
@@ -43,29 +44,38 @@ export default function EstadoCuenta({ clienteId, onRegistrarPago }) {
             ${Math.max(0, saldoPendiente).toLocaleString('es-AR')}
           </p>
           <p className={`text-sm font-medium mt-1 ${estaAlDia ? 'text-green-700 dark:text-green-400' : 'text-red-700 dark:text-red-400'}`}>
-            {estaAlDia ? 'El cliente está al día' : 'El cliente registra deuda'}
+            {estaAlDia ? 'El cliente está al día' : `${deudasActivas} deuda${deudasActivas !== 1 ? 's' : ''} activa${deudasActivas !== 1 ? 's' : ''}`}
           </p>
         </div>
       </div>
 
       <div className="p-6 flex-1 grid grid-cols-2 gap-4">
         <div>
-          <p className="text-xs font-bold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider mb-1">Total en Trabajos</p>
-          <p className="text-2xl font-bold text-neutral-900 dark:text-white">${totalTrabajos.toLocaleString('es-AR')}</p>
+          <p className="text-xs font-bold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider mb-1">Total en Deudas</p>
+          <p className="text-2xl font-bold text-neutral-900 dark:text-white">${totalDeuda.toLocaleString('es-AR')}</p>
         </div>
         <div>
           <p className="text-xs font-bold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider mb-1">Total Pagado</p>
           <p className="text-2xl font-bold text-neutral-900 dark:text-white">${totalPagado.toLocaleString('es-AR')}</p>
         </div>
         
-        <div className="col-span-2 mt-4">
+        <div className="col-span-2 mt-4 flex gap-2">
           <button 
             onClick={onRegistrarPago}
-            className="w-full flex items-center justify-center bg-black dark:bg-white hover:bg-neutral-800 dark:hover:bg-neutral-200 text-white dark:text-black font-bold py-3 px-4 rounded-xl transition-all shadow-sm"
+            className="flex-1 flex items-center justify-center bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded-xl transition-all shadow-sm"
           >
             <DollarSign className="w-5 h-5 mr-2" />
             Registrar Pago
           </button>
+          {onCrearDeuda && (
+            <button
+              onClick={onCrearDeuda}
+              className="flex items-center justify-center bg-neutral-900 dark:bg-white hover:bg-neutral-800 dark:hover:bg-neutral-200 text-white dark:text-black font-bold py-3 px-4 rounded-xl transition-all shadow-sm"
+            >
+              <Plus className="w-5 h-5 mr-2" />
+              Deuda
+            </button>
+          )}
         </div>
       </div>
 

@@ -78,10 +78,12 @@ export default function ClientesList() {
                   </p>
                 </div>
               </div>
-              <div className="flex items-center text-sm text-neutral-500 dark:text-neutral-400 border-t border-neutral-100 dark:border-neutral-800 pt-3">
-                <MapPin className="w-4 h-4 mr-1 shrink-0" />
-                <span className="truncate">{cliente.direccion}</span>
-              </div>
+              {cliente.direccion && (
+                <div className="flex items-center text-sm text-neutral-500 dark:text-neutral-400 border-t border-neutral-100 dark:border-neutral-800 pt-3">
+                  <MapPin className="w-4 h-4 mr-1 shrink-0" />
+                  <span className="truncate">{cliente.direccion}</span>
+                </div>
+              )}
             </Link>
           ))}
         </div>

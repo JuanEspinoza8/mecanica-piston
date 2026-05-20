@@ -1,14 +1,19 @@
 import { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { ArrowLeft, CarFront, User, Calendar, Wrench, Settings, PackageOpen, Plus, Camera, Trash2, FileText, CheckCircle2, Circle, Loader, PauseCircle, X, Save, Loader2, UploadCloud } from 'lucide-react';
+import { ArrowLeft, CarFront, User, Calendar, Wrench, Settings, PackageOpen, Plus, Camera, Trash2, FileText, CheckCircle2, Circle, Loader, PauseCircle, X, Save, Loader2, UploadCloud, DollarSign } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 
 import AddRepuestoModal from '../components/AddRepuestoModal';
 import ImageViewerModal from '../components/ImageViewerModal';
+import DeudaCard from '../components/DeudaCard';
+import CrearDeudaModal from '../components/CrearDeudaModal';
+import PagoForm from '../components/PagoForm';
+import ConfirmModal from '../components/ConfirmModal';
 
 import { useOrden, useUpdateOrden, useRepuestos, useDeleteRepuesto, useTareas, useAddTarea, useUpdateTarea } from '../hooks/useOrdenes';
 import { useArchivos, useFileUpload } from '../hooks/useArchivos';
+import { useDeudasOrden, useDeleteDeuda } from '../hooks/useDeudas';
 
 export default function OrdenDetail() {
   const { id } = useParams();
@@ -18,6 +23,8 @@ export default function OrdenDetail() {
   const { data: repuestos = [] } = useRepuestos(id);
   const { data: tareas = [] } = useTareas(id);
   const { data: archivos = [] } = useArchivos(id);
+  const { data: deudasOrden = [] } = useDeudasOrden(id);
+  const { mutateAsync: deleteDeuda } = useDeleteDeuda();
 
   // Mutations
   const { mutateAsync: updateOrden } = useUpdateOrden();
@@ -40,6 +47,20 @@ export default function OrdenDetail() {
   const [editSintoma, setEditSintoma] = useState('');
   const [editNotas, setEditNotas] = useState('');
 
+  // Preview de imagen antes de subir
+  const [previewFile, setPreviewFile] = useState(null);
+  const [previewUrl, setPreviewUrl] = useState(null);
+
+  // Motivo de espera
+  const [showMotivoEspera, setShowMotivoEspera] = useState(false);
+  const [motivoEspera, setMotivoEspera] = useState('');
+
+  // Deudas y pagos
+  const [showCrearDeuda, setShowCrearDeuda] = useState(false);
+  const [showPagoForm, setShowPagoForm] = useState(false);
+  const [pagoDeudaId, setPagoDeudaId] = useState(null);
+  const [deleteDeudaTarget, setDeleteDeudaTarget] = useState(null);
+
   if (isLoadingOrden || !orden) {
     return (
       <div className="flex flex-col items-center justify-center py-20 text-neutral-500">
@@ -53,7 +74,7 @@ export default function OrdenDetail() {
     switch(estado) {
       case 'Terminado': 
       case 'Entregado': return 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 border-green-200 dark:border-green-800/50';
-      case 'En proceso': return 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-800/50';
+      case 'En proceso': return 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 border-red-200 dark:border-red-800/50';
       case 'Pendiente': return 'bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 border-neutral-200 dark:border-neutral-700';
       case 'Esperando repuesto': return 'bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400 border-orange-200 dark:border-orange-800/50';
       default: return 'bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 border-neutral-200 dark:border-neutral-700';
@@ -129,19 +150,55 @@ export default function OrdenDetail() {
     }
   };
 
-  const handleEstadoToggle = async () => {
-    const newEstado = orden.estado === 'Esperando repuesto' ? 'En proceso' : 'Esperando repuesto';
+  const handleCambiarEstado = async (nuevoEstado) => {
+    if (nuevoEstado === orden.estado) return;
+
+    if (nuevoEstado === 'Esperando repuesto') {
+      // Mostrar modal para pedir motivo
+      setMotivoEspera('');
+      setShowMotivoEspera(true);
+      return;
+    }
+
     try {
-      await updateOrden({ id: orden.id, estado: newEstado });
+      await updateOrden({ id: orden.id, estado: nuevoEstado, motivo_espera: null });
+      toast.success(`Estado cambiado a "${nuevoEstado}"`);
     } catch (e) {
       toast.error("Error al cambiar estado");
     }
   };
 
-  const handleFileUpload = async (e) => {
+  const handleConfirmarEspera = async () => {
+    try {
+      await updateOrden({
+        id: orden.id,
+        estado: 'Esperando repuesto',
+        motivo_espera: motivoEspera.trim() || null,
+      });
+      setShowMotivoEspera(false);
+      toast.success('Orden marcada en espera de repuesto');
+    } catch (e) {
+      toast.error("Error al cambiar estado");
+    }
+  };
+
+  const handleFileSelect = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    // Si es imagen, mostrar preview
+    if (file.type.startsWith('image/')) {
+      setPreviewFile(file);
+      setPreviewUrl(URL.createObjectURL(file));
+    } else {
+      // PDF: subir directamente
+      handleUploadFile(file);
+    }
+    // Limpiar el input para permitir seleccionar el mismo archivo
+    e.target.value = '';
+  };
+
+  const handleUploadFile = async (file) => {
     try {
       const tipo = file.type.startsWith('image/') ? 'imagen' : 'documento';
       await uploadFile({ file, ordenId: orden.id, tipo });
@@ -149,6 +206,21 @@ export default function OrdenDetail() {
     } catch (error) {
       toast.error("Error al subir el archivo");
     }
+  };
+
+  const handleConfirmUpload = async () => {
+    if (!previewFile) return;
+    await handleUploadFile(previewFile);
+    // Limpiar preview
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    setPreviewFile(null);
+    setPreviewUrl(null);
+  };
+
+  const handleCancelPreview = () => {
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    setPreviewFile(null);
+    setPreviewUrl(null);
   };
 
   const displayId = `ORD-${orden.id.substring(0, 4).toUpperCase()}`;
@@ -175,21 +247,28 @@ export default function OrdenDetail() {
           </div>
         </div>
         
-        <div className="flex items-center gap-3">
-          <button 
-            onClick={handleEstadoToggle}
-            className={`flex items-center text-sm font-semibold px-4 py-2.5 rounded-full transition-all border-2 ${
-              orden.estado === 'Esperando repuesto'
-                ? 'bg-orange-50 dark:bg-orange-900/20 text-orange-600 dark:text-orange-400 border-orange-300 dark:border-orange-700 shadow-md'
-                : 'bg-white dark:bg-neutral-900 text-neutral-500 dark:text-neutral-400 border-neutral-200 dark:border-neutral-700 hover:border-orange-300 dark:hover:border-orange-700'
-            }`}
-          >
-            <PauseCircle className="w-4 h-4 mr-2" />
-            {orden.estado === 'Esperando repuesto' ? 'Esperando repuesto ✓' : 'Marcar espera'}
-          </button>
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+          {/* Selector de estado — scrollable en mobile */}
+          <div className="overflow-x-auto -mx-2 px-2 pb-1 sm:pb-0 sm:mx-0 sm:px-0">
+            <div className="flex bg-neutral-100 dark:bg-neutral-800 rounded-full p-1 gap-0.5 w-max">
+              {['Pendiente', 'En proceso', 'Esperando repuesto', 'Terminado', 'Entregado'].map((est) => (
+                <button
+                  key={est}
+                  onClick={() => handleCambiarEstado(est)}
+                  className={`px-3 py-1.5 text-[11px] font-bold rounded-full transition-all whitespace-nowrap ${
+                    orden.estado === est
+                      ? getEstadoBadge(est) + ' shadow-sm'
+                      : 'text-neutral-500 dark:text-neutral-400 hover:text-neutral-800 dark:hover:text-neutral-200 hover:bg-white/50 dark:hover:bg-neutral-700/50'
+                  }`}
+                >
+                  {est}
+                </button>
+              ))}
+            </div>
+          </div>
           <button 
             onClick={openEditModal}
-            className="flex items-center justify-center text-sm font-semibold text-white bg-black dark:bg-red-600 hover:bg-neutral-900 dark:hover:bg-red-700 px-6 py-2.5 rounded-full transition-colors shadow-lg"
+            className="flex items-center justify-center text-sm font-semibold text-white bg-black dark:bg-red-600 hover:bg-neutral-900 dark:hover:bg-red-700 px-6 py-2.5 rounded-full transition-colors shadow-lg shrink-0"
           >
             <Settings className="w-4 h-4 mr-2" />
             Editar Orden
@@ -371,7 +450,7 @@ export default function OrdenDetail() {
                   type="file" 
                   accept="image/*,application/pdf" 
                   className="hidden" 
-                  onChange={handleFileUpload} 
+                  onChange={handleFileSelect} 
                   disabled={isUploading}
                 />
                 {isUploading ? (
@@ -483,11 +562,50 @@ export default function OrdenDetail() {
                   ${totalEstimado.toLocaleString('es-AR')}
                 </span>
               </div>
+
+              {/* Botón cargar como deuda */}
+              {totalEstimado > 0 && (
+                <button
+                  onClick={() => setShowCrearDeuda(true)}
+                  className="w-full mt-3 py-2.5 bg-white/10 hover:bg-white/20 text-white text-xs font-bold rounded-xl transition-colors flex items-center justify-center border border-white/10"
+                >
+                  <DollarSign className="w-4 h-4 mr-1.5" />
+                  Cargar como Deuda
+                </button>
+              )}
             </div>
           </div>
         </div>
 
       </div>
+
+      {/* Sección de Deudas de esta Orden */}
+      {(deudasOrden.length > 0) && (
+        <div className="mt-8">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-xl font-bold text-neutral-900 dark:text-white flex items-center">
+              <DollarSign className="w-5 h-5 mr-2 text-neutral-500" />
+              Deuda de esta Orden
+            </h3>
+            <button
+              onClick={() => { setPagoDeudaId(null); setShowPagoForm(true); }}
+              className="flex items-center text-xs font-bold text-green-600 dark:text-green-400 hover:text-green-700 dark:hover:text-green-300 transition-colors bg-green-50 dark:bg-green-950/30 px-3 py-1.5 rounded-lg"
+            >
+              <DollarSign className="w-3.5 h-3.5 mr-1" /> Registrar Pago
+            </button>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {deudasOrden.map(deuda => (
+              <DeudaCard
+                key={deuda.id}
+                deuda={deuda}
+                onPagar={(d) => { setPagoDeudaId(d.id); setShowPagoForm(true); }}
+                onEliminar={(d) => setDeleteDeudaTarget(d)}
+              />
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Modal interactivo de repuestos */}
       <AddRepuestoModal 
@@ -572,6 +690,135 @@ export default function OrdenDetail() {
           </div>
         </div>
       )}
+
+      {/* Modal Preview de Imagen */}
+      {previewUrl && (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200 p-4">
+          <div className="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 shadow-2xl w-full max-w-lg animate-in zoom-in-95 duration-200 overflow-hidden">
+            <div className="p-4 border-b border-neutral-100 dark:border-neutral-800">
+              <h3 className="font-bold text-neutral-900 dark:text-white">Vista previa</h3>
+              <p className="text-xs text-neutral-500 mt-0.5">{previewFile?.name}</p>
+            </div>
+            <div className="p-4">
+              <img 
+                src={previewUrl} 
+                alt="Preview" 
+                className="w-full max-h-[400px] object-contain rounded-xl bg-neutral-100 dark:bg-neutral-800" 
+              />
+            </div>
+            <div className="flex items-center justify-end gap-3 p-4 border-t border-neutral-100 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-950/50">
+              <button
+                onClick={handleCancelPreview}
+                className="px-5 py-2.5 text-sm font-semibold text-neutral-600 dark:text-neutral-400 hover:text-neutral-800 dark:hover:text-neutral-200 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleConfirmUpload}
+                disabled={isUploading}
+                className="flex items-center px-6 py-2.5 bg-red-600 hover:bg-red-700 disabled:bg-neutral-400 text-white text-sm font-bold rounded-full transition-colors shadow-lg shadow-red-600/20"
+              >
+                {isUploading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Subiendo...
+                  </>
+                ) : (
+                  <>
+                    <UploadCloud className="w-4 h-4 mr-2" />
+                    Subir Imagen
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Motivo de Espera */}
+      {showMotivoEspera && (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200 p-4">
+          <div className="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 shadow-2xl w-full max-w-md animate-in zoom-in-95 duration-200">
+            <div className="p-6 border-b border-neutral-100 dark:border-neutral-800">
+              <h3 className="text-lg font-bold text-neutral-900 dark:text-white flex items-center">
+                <PauseCircle className="w-5 h-5 mr-2 text-orange-500" />
+                Marcar en espera de repuesto
+              </h3>
+            </div>
+            <div className="p-6">
+              <label className="block text-sm font-semibold text-neutral-700 dark:text-neutral-300 mb-1.5">
+                ¿Qué repuesto se necesita? <span className="text-neutral-400 font-normal">(opcional)</span>
+              </label>
+              <input
+                type="text"
+                value={motivoEspera}
+                onChange={(e) => setMotivoEspera(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') handleConfirmarEspera(); }}
+                placeholder="Ej: Pastillas de freno delanteras..."
+                autoFocus
+                className="w-full bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl px-4 py-3 text-neutral-800 dark:text-white focus:outline-none focus:border-orange-500 dark:focus:border-orange-500 transition-colors text-sm"
+              />
+            </div>
+            <div className="flex items-center justify-end gap-3 p-6 border-t border-neutral-100 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-950/50 rounded-b-2xl">
+              <button
+                onClick={() => setShowMotivoEspera(false)}
+                className="px-5 py-2.5 text-sm font-semibold text-neutral-600 dark:text-neutral-400 hover:text-neutral-800 dark:hover:text-neutral-200 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleConfirmarEspera}
+                className="flex items-center px-6 py-2.5 bg-orange-500 hover:bg-orange-600 text-white text-sm font-bold rounded-full transition-colors shadow-lg shadow-orange-500/20"
+              >
+                <PauseCircle className="w-4 h-4 mr-2" />
+                Confirmar Espera
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Crear Deuda desde Total Estimado */}
+      <CrearDeudaModal
+        isOpen={showCrearDeuda}
+        onClose={() => setShowCrearDeuda(false)}
+        clienteId={orden.vehiculo?.cliente_id || orden.vehiculos?.cliente_id || orden.cliente?.id}
+        ordenId={orden.id}
+        defaultConcepto={`Reparación ${displayId} — ${orden.vehiculo?.marca || orden.vehiculos?.marca || ''} ${orden.vehiculo?.modelo || orden.vehiculos?.modelo || ''}`}
+        defaultMonto={totalEstimado}
+      />
+
+      {/* Modal Registrar Pago */}
+      {showPagoForm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
+          <PagoForm
+            clienteId={orden.vehiculo?.cliente_id || orden.vehiculos?.cliente_id || orden.cliente?.id}
+            ordenId={orden.id}
+            preselectedDeudaId={pagoDeudaId}
+            onSuccess={() => setShowPagoForm(false)}
+            onCancel={() => setShowPagoForm(false)}
+          />
+        </div>
+      )}
+
+      {/* Confirmar eliminar deuda */}
+      <ConfirmModal
+        isOpen={!!deleteDeudaTarget}
+        onClose={() => setDeleteDeudaTarget(null)}
+        onConfirm={async () => {
+          if (deleteDeudaTarget) {
+            try {
+              await deleteDeuda({ id: deleteDeudaTarget.id, cliente_id: deleteDeudaTarget.cliente_id });
+              setDeleteDeudaTarget(null);
+            } catch (e) {
+              // handled in hook
+            }
+          }
+        }}
+        titulo="¿Eliminar esta deuda?"
+        mensaje={`Se eliminará la deuda "${deleteDeudaTarget?.concepto}" por $${Number(deleteDeudaTarget?.monto_total || 0).toLocaleString('es-AR')}. Los pagos asociados no se borrarán.`}
+        textoConfirmar="Sí, eliminar deuda"
+      />
 
     </div>
   );

@@ -3,6 +3,8 @@ import { Routes, Route } from 'react-router-dom'
 import { routes } from './routes'
 import Layout from './components/Layout'
 import ProtectedRoute from './components/ProtectedRoute'
+import ErrorBoundary from './components/ErrorBoundary'
+import LoadingPage from './components/LoadingPage'
 import Login from './pages/Login'
 import { Toaster } from 'sonner'
 import useAppStore from './store/useAppStore'
@@ -34,15 +36,17 @@ function App() {
         {/* Rutas protegidas: requieren autenticación */}
         <Route path="*" element={
           <ProtectedRoute>
-            <Layout>
-              <Suspense fallback={<div className="flex h-screen items-center justify-center">Cargando...</div>}>
-                <Routes>
-                  {routes.map((route) => (
-                    <Route key={route.path} path={route.path} element={route.element} />
-                  ))}
-                </Routes>
-              </Suspense>
-            </Layout>
+            <ErrorBoundary>
+              <Layout>
+                <Suspense fallback={<LoadingPage />}>
+                  <Routes>
+                    {routes.map((route) => (
+                      <Route key={route.path} path={route.path} element={route.element} />
+                    ))}
+                  </Routes>
+                </Suspense>
+              </Layout>
+            </ErrorBoundary>
           </ProtectedRoute>
         } />
       </Routes>

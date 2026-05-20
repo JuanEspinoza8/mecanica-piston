@@ -17,15 +17,16 @@ const useAppStore = create(
       pendingSyncCount: 0,
       setPendingSyncCount: (count) => set({ pendingSyncCount: count }),
 
-      // Autenticación (simulada - Juan conectará con Supabase Auth)
+      // Autenticación (alimentada por Supabase Auth via ProtectedRoute)
       user: null,
       isAuthenticated: false,
-      login: (userData) => set({ user: userData, isAuthenticated: true }),
-      logout: () => set({ user: null, isAuthenticated: false }),
+      authLoading: true, // true hasta que onAuthStateChange resuelva
+      setAuth: (user) => set({ user, isAuthenticated: !!user, authLoading: false }),
+      clearAuth: () => set({ user: null, isAuthenticated: false, authLoading: false }),
     }),
     {
       name: 'mecanica-piston-storage',
-      partialize: (state) => ({ theme: state.theme, user: state.user, isAuthenticated: state.isAuthenticated }),
+      partialize: (state) => ({ theme: state.theme }),
     }
   )
 );

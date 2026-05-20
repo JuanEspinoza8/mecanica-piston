@@ -12,11 +12,16 @@ const OrdenNueva = lazy(() => import('./pages/OrdenNueva'))
 const OrdenDetail = lazy(() => import('./pages/OrdenDetail'))
 const NotFound = lazy(() => import('./pages/NotFound'))
 const SearchResults = lazy(() => import('./pages/SearchResults'))
+const Economia = lazy(() => import('./pages/Economia'))
 
 export const routes = [
   {
     path: '/',
     element: <Dashboard />,
+  },
+  {
+    path: '/economia',
+    element: <Economia />,
   },
   {
     path: '/clientes',

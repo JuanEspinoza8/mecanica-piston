@@ -2,20 +2,22 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Mail, Lock, LogIn, Loader2, Eye, EyeOff } from 'lucide-react';
 import { toast } from 'sonner';
+import { supabase } from '../lib/supabase';
 import useAppStore from '../store/useAppStore';
 
 export default function Login() {
   const navigate = useNavigate();
-  const login = useAppStore((state) => state.login);
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [showSplash, setShowSplash] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setErrorMsg('');
 
     if (!email.trim() || !password.trim()) {
       toast.error('Completá todos los campos');
@@ -24,20 +26,50 @@ export default function Login() {
 
     setIsLoading(true);
 
-    // Simular validación
-    await new Promise(resolve => setTimeout(resolve, 1200));
+    try {
+      const { error } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password: password.trim(),
+      });
 
-    // Simulamos login exitoso
-    login({ email, nombre: email.split('@')[0] });
-    setIsLoading(false);
-    
-    // Mostrar splash screen antes del dashboard
-    setShowSplash(true);
-    
-    await new Promise(resolve => setTimeout(resolve, 2800));
-    
-    toast.success('¡Bienvenido al taller!');
-    navigate('/');
+      if (error) {
+        // Mapear mensajes de error de Supabase a español
+        const mensajes = {
+          'Invalid login credentials': 'Email o contraseña incorrectos',
+          'Email not confirmed': 'El email no fue confirmado. Revisá tu casilla.',
+          'Too many requests': 'Demasiados intentos. Esperá unos minutos.',
+        };
+        const msg = mensajes[error.message] || error.message;
+        setErrorMsg(msg);
+        toast.error(msg);
+        setIsLoading(false);
+        return;
+      }
+
+      // Login exitoso — setear auth inmediatamente para evitar race condition
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        useAppStore.getState().setAuth({
+          id: session.user.id,
+          email: session.user.email,
+          nombre: session.user.user_metadata?.nombre || session.user.email.split('@')[0],
+        });
+      }
+
+      setIsLoading(false);
+
+      // Mostrar splash screen antes del dashboard
+      setShowSplash(true);
+
+      await new Promise(resolve => setTimeout(resolve, 2800));
+
+      toast.success('¡Bienvenido al taller!');
+      navigate('/', { replace: true });
+    } catch (err) {
+      setErrorMsg('Error de conexión. Verificá tu internet.');
+      toast.error('Error de conexión');
+      setIsLoading(false);
+    }
   };
 
   // ===================== SPLASH SCREEN =====================
@@ -175,6 +207,13 @@ export default function Login() {
               </div>
 
             </div>
+
+            {/* Mensaje de error */}
+            {errorMsg && (
+              <div className="bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-3 text-red-400 text-sm font-medium text-center animate-in fade-in slide-in-from-top-2 duration-200">
+                {errorMsg}
+              </div>
+            )}
 
             {/* Botón de Login */}
             <button
