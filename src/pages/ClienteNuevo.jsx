@@ -1,0 +1,45 @@
+import { useState } from 'react';
+import { useNavigate, Link } from 'react-router-dom';
+import { ArrowLeft } from 'lucide-react';
+import { toast } from 'sonner';
+import ClienteForm from '../components/ClienteForm';
+import { useCreateCliente } from '../hooks/useClientes';
+
+export default function ClienteNuevo() {
+  const navigate = useNavigate();
+  const createClienteMutation = useCreateCliente();
+
+  // Función que se ejecuta cuando el formulario es válido y se envía
+  const onSubmit = async (data) => {
+    try {
+      await createClienteMutation.mutateAsync(data);
+      toast.success('Cliente registrado correctamente');
+      navigate('/clientes');
+    } catch (error) {
+      toast.error('Error al guardar el cliente: ' + error.message);
+    }
+  };
+
+  return (
+    <div className="max-w-2xl mx-auto space-y-6 pb-6">
+      
+      {/* Botón volver y Título */}
+      <div className="flex items-center space-x-4">
+        <Link 
+          to="/clientes"
+          className="p-2 rounded-full hover:bg-neutral-200 dark:hover:bg-neutral-800 transition-colors text-neutral-600 dark:text-neutral-400"
+        >
+          <ArrowLeft className="w-6 h-6" />
+        </Link>
+        <div>
+          <h1 className="text-2xl font-bold text-neutral-900 dark:text-white">Nuevo Cliente</h1>
+          <p className="text-neutral-500 dark:text-neutral-400">Registra un nuevo cliente en el sistema.</p>
+        </div>
+      </div>
+
+      {/* Componente del Formulario */}
+      <ClienteForm onSubmit={onSubmit} isSubmitting={createClienteMutation.isPending} />
+      
+    </div>
+  );
+}
