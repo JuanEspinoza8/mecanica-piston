@@ -14,6 +14,11 @@ export function useArchivos(ordenId) {
     queryKey: ARCHIVOS_KEYS.orden(ordenId),
     queryFn: async () => {
       if (!ordenId) return [];
+      if (!isOnline()) {
+        const cached = await getCachedByIndex('archivos', 'orden_id', ordenId);
+        // URLs won't work offline but at least metadata is available
+        return cached.map(a => ({ ...a, url: a.ruta_storage || '' }));
+      }
       try {
         const { data, error } = await supabase
           .from('archivos')
@@ -33,11 +38,6 @@ export function useArchivos(ordenId) {
           return { ...archivo, url: publicUrlData.publicUrl };
         });
       } catch (err) {
-        if (!isOnline()) {
-          const cached = await getCachedByIndex('archivos', 'orden_id', ordenId);
-          // URLs won't work offline but at least metadata is available
-          return cached.map(a => ({ ...a, url: a.ruta_storage || '' }));
-        }
         throw err;
       }
     },
@@ -51,6 +51,10 @@ export function useArchivosVehiculo(vehiculoId) {
     queryKey: ['archivos', 'vehiculo', vehiculoId],
     queryFn: async () => {
       if (!vehiculoId) return [];
+      if (!isOnline()) {
+        // Fallback since offline caching of complex join is hard
+        return [];
+      }
       try {
         const { data: ordenes } = await supabase
           .from('ordenes_trabajo')
@@ -81,10 +85,6 @@ export function useArchivosVehiculo(vehiculoId) {
           };
         });
       } catch (err) {
-        if (!isOnline()) {
-          const cached = await getCachedByIndex('archivos', 'orden_id', vehiculoId);
-          return cached.map(a => ({ ...a, url: '' }));
-        }
         throw err;
       }
     },

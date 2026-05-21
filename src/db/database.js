@@ -9,12 +9,13 @@ import Dexie from 'dexie';
  */
 const db = new Dexie('MecanicaPistonDB');
 
-db.version(2).stores({
+db.version(3).stores({
   // Tablas espejo de Supabase
   clientes: '&id, nombre, apellido, telefono',
   vehiculos: '&id, cliente_id, patente, marca',
   ordenes_trabajo: '&id, vehiculo_id, estado',
   repuestos: '&id, orden_id',
+  tareas_orden: '&id, orden_id',
   pagos: '&id, cliente_id',
   deudas: '&id, cliente_id, orden_id, estado',
   notas: '&id, completada',
