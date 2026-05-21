@@ -1,6 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
 import imageCompression from 'browser-image-compression';
+import { cacheData, getCachedByIndex, isOnline } from '../db/offlineService';
+import { toast } from 'sonner';
 
 export const ARCHIVOS_KEYS = {
   all: ['archivos'],
@@ -12,25 +14,32 @@ export function useArchivos(ordenId) {
     queryKey: ARCHIVOS_KEYS.orden(ordenId),
     queryFn: async () => {
       if (!ordenId) return [];
-      const { data, error } = await supabase
-        .from('archivos')
-        .select('*')
-        .eq('orden_id', ordenId)
-        .order('created_at', { ascending: false });
-        
-      if (error) throw error;
-      
-      // Obtener URLs públicas para cada archivo
-      return data.map(archivo => {
-        const { data: publicUrlData } = supabase.storage
+      try {
+        const { data, error } = await supabase
           .from('archivos')
-          .getPublicUrl(archivo.ruta_storage);
+          .select('*')
+          .eq('orden_id', ordenId)
+          .order('created_at', { ascending: false });
           
-        return {
-          ...archivo,
-          url: publicUrlData.publicUrl
-        };
-      });
+        if (error) throw error;
+        
+        // Cache for offline
+        await cacheData('archivos', data);
+
+        return data.map(archivo => {
+          const { data: publicUrlData } = supabase.storage
+            .from('archivos')
+            .getPublicUrl(archivo.ruta_storage);
+          return { ...archivo, url: publicUrlData.publicUrl };
+        });
+      } catch (err) {
+        if (!isOnline()) {
+          const cached = await getCachedByIndex('archivos', 'orden_id', ordenId);
+          // URLs won't work offline but at least metadata is available
+          return cached.map(a => ({ ...a, url: a.ruta_storage || '' }));
+        }
+        throw err;
+      }
     },
     enabled: !!ordenId,
   });
@@ -42,34 +51,42 @@ export function useArchivosVehiculo(vehiculoId) {
     queryKey: ['archivos', 'vehiculo', vehiculoId],
     queryFn: async () => {
       if (!vehiculoId) return [];
-      // Get order IDs for this vehicle
-      const { data: ordenes } = await supabase
-        .from('ordenes_trabajo')
-        .select('id, descripcion')
-        .eq('vehiculo_id', vehiculoId);
-      if (!ordenes || ordenes.length === 0) return [];
+      try {
+        const { data: ordenes } = await supabase
+          .from('ordenes_trabajo')
+          .select('id, descripcion')
+          .eq('vehiculo_id', vehiculoId);
+        if (!ordenes || ordenes.length === 0) return [];
 
-      const ordenIds = ordenes.map(o => o.id);
-      const { data, error } = await supabase
-        .from('archivos')
-        .select('*')
-        .in('orden_id', ordenIds)
-        .order('created_at', { ascending: false });
-      if (error) throw error;
-
-      const ordenMap = Object.fromEntries(ordenes.map(o => [o.id, o.descripcion]));
-
-      return data.map(archivo => {
-        const { data: publicUrlData } = supabase.storage
+        const ordenIds = ordenes.map(o => o.id);
+        const { data, error } = await supabase
           .from('archivos')
-          .getPublicUrl(archivo.ruta_storage);
-        return {
-          ...archivo,
-          url: publicUrlData.publicUrl,
-          ordenDescripcion: ordenMap[archivo.orden_id] || '',
-          displayOrdenId: `ORD-${archivo.orden_id.substring(0, 4).toUpperCase()}`,
-        };
-      });
+          .select('*')
+          .in('orden_id', ordenIds)
+          .order('created_at', { ascending: false });
+        if (error) throw error;
+
+        await cacheData('archivos', data);
+
+        const ordenMap = Object.fromEntries(ordenes.map(o => [o.id, o.descripcion]));
+        return data.map(archivo => {
+          const { data: publicUrlData } = supabase.storage
+            .from('archivos')
+            .getPublicUrl(archivo.ruta_storage);
+          return {
+            ...archivo,
+            url: publicUrlData.publicUrl,
+            ordenDescripcion: ordenMap[archivo.orden_id] || '',
+            displayOrdenId: `ORD-${archivo.orden_id.substring(0, 4).toUpperCase()}`,
+          };
+        });
+      } catch (err) {
+        if (!isOnline()) {
+          const cached = await getCachedByIndex('archivos', 'orden_id', vehiculoId);
+          return cached.map(a => ({ ...a, url: '' }));
+        }
+        throw err;
+      }
     },
     enabled: !!vehiculoId,
   });
@@ -80,6 +97,11 @@ export function useFileUpload() {
   
   return useMutation({
     mutationFn: async ({ file, ordenId, tipo }) => {
+      if (!isOnline()) {
+        toast.error('No se pueden subir archivos sin conexión');
+        throw new Error('No se pueden subir archivos sin conexión');
+      }
+
       let fileToUpload = file;
       
       // Validar documentos PDF
@@ -93,10 +115,10 @@ export function useFileUpload() {
         }
       }
       
-      // Comprimir solo si es imagen (no PDF)
+      // Comprimir solo si es imagen
       if (tipo === 'imagen' && file.type.startsWith('image/')) {
         const options = {
-          maxSizeMB: 0.15, // ~150 KB
+          maxSizeMB: 0.15,
           maxWidthOrHeight: 1200,
           useWebWorker: true,
           fileType: 'image/webp'
@@ -105,29 +127,25 @@ export function useFileUpload() {
           fileToUpload = await imageCompression(file, options);
         } catch (error) {
           console.error("Error al comprimir imagen:", error);
-          // Si falla, subimos la original
         }
       }
 
-      // Nombre único
       const fileExt = fileToUpload.name.split('.').pop();
       const fileName = `${ordenId}/${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
 
-      // Subir a Storage
       const { error: uploadError } = await supabase.storage
         .from('archivos')
         .upload(fileName, fileToUpload);
 
       if (uploadError) throw uploadError;
 
-      // Guardar en tabla
       const { data, error: dbError } = await supabase
         .from('archivos')
         .insert([{
           orden_id: ordenId,
           nombre_archivo: file.name,
           ruta_storage: fileName,
-          tipo: tipo // 'imagen' o 'documento'
+          tipo: tipo
         }])
         .select()
         .single();
@@ -147,19 +165,20 @@ export function useDeleteArchivo() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (archivo) => {
-      // Borrar de storage primero
+      if (!isOnline()) {
+        toast.error('No se pueden eliminar archivos sin conexión');
+        throw new Error('No se pueden eliminar archivos sin conexión');
+      }
+
       const { error: storageError } = await supabase.storage
         .from('archivos')
         .remove([archivo.ruta_storage]);
-        
       if (storageError) throw storageError;
 
-      // Borrar de DB
       const { error: dbError } = await supabase
         .from('archivos')
         .delete()
         .eq('id', archivo.id);
-        
       if (dbError) throw dbError;
       
       return archivo;

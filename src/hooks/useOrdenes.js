@@ -23,22 +23,16 @@ const mapOrdenToDB = (orden) => {
     ...rest,
     vehiculo_id: vehiculoId,
     descripcion: sintoma,
-    // clienteId no va a la BD, se deduce por vehiculo_id
   };
 };
 
 const mapOrdenFromDB = (orden) => {
   if (!orden) return null;
-  
-  // Calcular total (repuestos)
-  // En una app real también sumaríamos mano de obra si existiese en la BD
   const totalRepuestos = orden.repuestos?.reduce((sum, rep) => sum + (Number(rep.costo) * Number(rep.cantidad)), 0) || 0;
-
   return {
     ...orden,
-    sintoma: orden.descripcion, // para UI
+    sintoma: orden.descripcion,
     vehiculoId: orden.vehiculo_id,
-    // Mapear info relacional si viene
     cliente: orden.vehiculos?.clientes,
     vehiculo: orden.vehiculos,
     totalRepuestos,
@@ -57,22 +51,10 @@ export function useOrdenes(vehiculoId) {
           .select(`
             *,
             vehiculos (
-              id,
-              patente,
-              marca,
-              modelo,
-              anio,
-              clientes (
-                id,
-                nombre,
-                apellido,
-                telefono
-              )
+              id, patente, marca, modelo, anio,
+              clientes ( id, nombre, apellido, telefono )
             ),
-            repuestos (
-              costo,
-              cantidad
-            )
+            repuestos ( costo, cantidad )
           `)
           .order('created_at', { ascending: false });
 
@@ -82,8 +64,6 @@ export function useOrdenes(vehiculoId) {
 
         const { data, error } = await query;
         if (error) throw error;
-        
-        // Cache para offline
         await cacheData('ordenes_trabajo', data);
         return data.map(mapOrdenFromDB);
       } catch (err) {
@@ -113,22 +93,10 @@ export function useOrden(id) {
           .select(`
             *,
             vehiculos (
-              id,
-              patente,
-              marca,
-              modelo,
-              anio,
-              clientes (
-                id,
-                nombre,
-                apellido,
-                telefono
-              )
+              id, patente, marca, modelo, anio,
+              clientes ( id, nombre, apellido, telefono )
             ),
-            repuestos (
-              costo,
-              cantidad
-            )
+            repuestos ( costo, cantidad )
           `)
           .eq('id', id)
           .single();
@@ -184,8 +152,17 @@ export function useUpdateOrden() {
   return useMutation({
     mutationFn: async ({ id, ...updates }) => {
       const dbUpdates = mapOrdenToDB({ ...updates, vehiculoId: updates.vehiculoId || undefined });
-      // Limpiar undefined
       Object.keys(dbUpdates).forEach(key => dbUpdates[key] === undefined && delete dbUpdates[key]);
+
+      if (!isOnline()) {
+        const cached = await getCachedById('ordenes_trabajo', id);
+        const updated = { ...(cached || {}), ...dbUpdates, id };
+        await cacheOne('ordenes_trabajo', updated);
+        await addPendingSync('ordenes_trabajo', 'update', { id, ...dbUpdates });
+        useAppStore.getState().setPendingSyncCount(await getPendingCount());
+        toast.info('Sin conexión — Cambios guardados localmente');
+        return updated;
+      }
 
       const { data, error } = await supabase
         .from('ordenes_trabajo')
@@ -270,7 +247,15 @@ export function useAddRepuesto() {
 export function useDeleteRepuesto() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (id) => {
+    mutationFn: async ({ id, ordenId }) => {
+      if (!isOnline()) {
+        await removeCached('repuestos', id);
+        await addPendingSync('repuestos', 'delete', { id });
+        useAppStore.getState().setPendingSyncCount(await getPendingCount());
+        toast.info('Sin conexión — Eliminación pendiente de sincronizar');
+        return { orden_id: ordenId };
+      }
+
       const { error, data } = await supabase
         .from('repuestos')
         .delete()
@@ -278,6 +263,7 @@ export function useDeleteRepuesto() {
         .select('orden_id')
         .single();
       if (error) throw error;
+      await removeCached('repuestos', id);
       return data;
     },
     onSuccess: (data) => {
@@ -295,13 +281,21 @@ export function useTareas(ordenId) {
     queryKey: ORDENES_KEYS.tareas(ordenId),
     queryFn: async () => {
       if (!ordenId) return [];
-      const { data, error } = await supabase
-        .from('tareas_orden')
-        .select('*')
-        .eq('orden_id', ordenId)
-        .order('created_at', { ascending: true });
-      if (error) throw error;
-      return data;
+      try {
+        const { data, error } = await supabase
+          .from('tareas_orden')
+          .select('*')
+          .eq('orden_id', ordenId)
+          .order('created_at', { ascending: true });
+        if (error) throw error;
+        return data;
+      } catch (err) {
+        if (!isOnline()) {
+          // tareas_orden no está en IndexedDB, devolver vacío offline
+          return [];
+        }
+        throw err;
+      }
     },
     enabled: !!ordenId,
   });
@@ -311,6 +305,12 @@ export function useAddTarea() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (nuevaTarea) => {
+      if (!isOnline()) {
+        toast.warning('Sin conexión — Las tareas se sincronizan al reconectar');
+        const tempId = crypto.randomUUID();
+        return { id: tempId, orden_id: nuevaTarea.ordenId, descripcion: nuevaTarea.descripcion, estado: nuevaTarea.estado || 'Pendiente', created_at: new Date().toISOString() };
+      }
+
       const { data, error } = await supabase
         .from('tareas_orden')
         .insert([{
@@ -332,7 +332,12 @@ export function useAddTarea() {
 export function useUpdateTarea() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, estado }) => {
+    mutationFn: async ({ id, estado, ordenId }) => {
+      if (!isOnline()) {
+        toast.warning('Sin conexión — El cambio se sincronizará al reconectar');
+        return { id, orden_id: ordenId, estado };
+      }
+
       const { data, error } = await supabase
         .from('tareas_orden')
         .update({ estado })
