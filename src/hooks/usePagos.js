@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
 import { toast } from 'sonner';
-import { cacheData, cacheOne, getCachedByIndex, addPendingSync, removeCached, isOnline, getPendingCount } from '../db/offlineService';
+import { cacheData, cacheOne, getCachedByIndex, getCachedById, addPendingSync, removeCached, isOnline, getPendingCount, generateId } from '../db/offlineService';
 import useAppStore from '../store/useAppStore';
 import { DEUDAS_KEYS } from './useDeudas';
 
@@ -46,7 +46,7 @@ export function useCreatePago() {
           toast.warning('El comprobante PDF se subirá cuando haya conexión');
         }
 
-        const tempId = crypto.randomUUID();
+        const tempId = generateId();
         const payload = {
           cliente_id: pagoData.cliente_id,
           deuda_id: deuda_id || null,
@@ -57,8 +57,28 @@ export function useCreatePago() {
           nota: pagoData.nota || null,
           fecha: pagoData.fecha,
         };
+        
+        let deudaData = null;
+        if (deuda_id) {
+          const deuda = await getCachedById('deudas', deuda_id);
+          if (deuda) {
+            deudaData = {
+              id: deuda.id,
+              concepto: deuda.concepto,
+              monto_total: deuda.monto_total,
+              en_cuotas: deuda.en_cuotas,
+              cantidad_cuotas: deuda.cantidad_cuotas
+            };
+          }
+        }
 
-        const pagoConId = { ...payload, id: tempId, created_at: new Date().toISOString() };
+        const pagoConId = { 
+          ...payload, 
+          id: tempId, 
+          created_at: new Date().toISOString(),
+          deudas: deudaData
+        };
+        
         await cacheOne('pagos', pagoConId);
         await addPendingSync('pagos', 'insert', payload);
         useAppStore.getState().setPendingSyncCount(await getPendingCount());

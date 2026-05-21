@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
 import { toast } from 'sonner';
-import { cacheData, getCachedData, getCachedByIndex, removeCached, addPendingSync, isOnline, getPendingCount } from '../db/offlineService';
+import { cacheData, cacheOne, getCachedData, getCachedById, getCachedByIndex, removeCached, addPendingSync, isOnline, getPendingCount, generateId } from '../db/offlineService';
 import useAppStore from '../store/useAppStore';
 
 export const DEUDAS_KEYS = {
@@ -139,8 +139,38 @@ export function useCreateDeuda() {
       };
 
       if (!isOnline()) {
-        const offlineId = crypto.randomUUID();
-        const offlineData = { ...payload, id: offlineId, created_at: new Date().toISOString() };
+        const offlineId = generateId();
+        
+        let ordenData = null;
+        if (payload.orden_id) {
+          const orden = await getCachedById('ordenes_trabajo', payload.orden_id);
+          if (orden) {
+            let vehiculoData = null;
+            if (orden.vehiculo_id) {
+               const vehiculo = await getCachedById('vehiculos', orden.vehiculo_id);
+               if (vehiculo) {
+                 vehiculoData = {
+                   patente: vehiculo.patente,
+                   marca: vehiculo.marca,
+                   modelo: vehiculo.modelo
+                 };
+               }
+            }
+            ordenData = {
+              id: orden.id,
+              descripcion: orden.descripcion,
+              vehiculos: vehiculoData
+            };
+          }
+        }
+
+        const offlineData = { 
+          ...payload, 
+          id: offlineId, 
+          created_at: new Date().toISOString(),
+          ordenes_trabajo: ordenData
+        };
+        await cacheOne('deudas', offlineData);
         await addPendingSync('deudas', 'insert', payload);
         const count = await getPendingCount();
         useAppStore.getState().setPendingSyncCount(count);

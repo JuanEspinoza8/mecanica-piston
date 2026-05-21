@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
 import { toast } from 'sonner';
-import { cacheData, cacheOne, getCachedData, getCachedById, removeCached, addPendingSync, isOnline, getPendingCount } from '../db/offlineService';
+import { cacheData, cacheOne, getCachedData, getCachedById, removeCached, addPendingSync, isOnline, getPendingCount, generateId } from '../db/offlineService';
 import useAppStore from '../store/useAppStore';
 
 // Keys para react-query
@@ -74,7 +74,7 @@ export function useCreateCliente() {
     mutationFn: async (nuevoCliente) => {
       if (!isOnline()) {
         // Offline: guardar localmente y encolar
-        const tempId = crypto.randomUUID();
+        const tempId = generateId();
         const clienteConId = { ...nuevoCliente, id: tempId, created_at: new Date().toISOString() };
         await cacheOne('clientes', clienteConId);
         await addPendingSync('clientes', 'insert', nuevoCliente);

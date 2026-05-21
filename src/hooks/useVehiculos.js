@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
-import { cacheData, cacheOne, getCachedData, getCachedById, getCachedByIndex, removeCached, addPendingSync, isOnline, getPendingCount } from '../db/offlineService';
+import { cacheData, cacheOne, getCachedData, getCachedById, getCachedByIndex, removeCached, addPendingSync, isOnline, getPendingCount, generateId } from '../db/offlineService';
 import useAppStore from '../store/useAppStore';
 import { toast } from 'sonner';
 
@@ -124,8 +124,27 @@ export function useCreateVehiculo() {
       const dbVehiculo = mapToDB(nuevoVehiculo);
 
       if (!isOnline()) {
-        const tempId = crypto.randomUUID();
-        const vehiculoConId = { ...dbVehiculo, id: tempId, created_at: new Date().toISOString() };
+        const tempId = generateId();
+        
+        let clienteData = null;
+        if (dbVehiculo.cliente_id) {
+          const cliente = await getCachedById('clientes', dbVehiculo.cliente_id);
+          if (cliente) {
+            clienteData = {
+              id: cliente.id,
+              nombre: cliente.nombre,
+              apellido: cliente.apellido
+            };
+          }
+        }
+        
+        const vehiculoConId = { 
+          ...dbVehiculo, 
+          id: tempId, 
+          created_at: new Date().toISOString(),
+          clientes: clienteData
+        };
+        
         await cacheOne('vehiculos', vehiculoConId);
         await addPendingSync('vehiculos', 'insert', dbVehiculo);
         useAppStore.getState().setPendingSyncCount(await getPendingCount());

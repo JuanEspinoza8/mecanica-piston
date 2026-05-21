@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
-import { cacheData, cacheOne, getCachedData, getCachedById, getCachedByIndex, removeCached, addPendingSync, isOnline, getPendingCount } from '../db/offlineService';
+import { cacheData, cacheOne, getCachedData, getCachedById, getCachedByIndex, removeCached, addPendingSync, isOnline, getPendingCount, generateId } from '../db/offlineService';
 import useAppStore from '../store/useAppStore';
 import { toast } from 'sonner';
 
@@ -123,13 +123,43 @@ export function useCreateOrden() {
       const dbOrden = mapOrdenToDB(nuevaOrden);
 
       if (!isOnline()) {
-        const tempId = crypto.randomUUID();
-        const ordenConId = { ...dbOrden, id: tempId, created_at: new Date().toISOString(), estado: dbOrden.estado || 'Pendiente' };
+        const tempId = generateId();
+        
+        // Hidratar relaciones para la lista offline
+        let vehiculoData = null;
+        if (dbOrden.vehiculo_id) {
+          const vehiculo = await getCachedById('vehiculos', dbOrden.vehiculo_id);
+          if (vehiculo) {
+            const cliente = await getCachedById('clientes', vehiculo.cliente_id);
+            vehiculoData = {
+              id: vehiculo.id,
+              patente: vehiculo.patente,
+              marca: vehiculo.marca,
+              modelo: vehiculo.modelo,
+              anio: vehiculo.anio,
+              clientes: cliente ? {
+                id: cliente.id,
+                nombre: cliente.nombre,
+                apellido: cliente.apellido,
+                telefono: cliente.telefono
+              } : null
+            };
+          }
+        }
+
+        const ordenConId = { 
+          ...dbOrden, 
+          id: tempId, 
+          created_at: new Date().toISOString(), 
+          estado: dbOrden.estado || 'Pendiente',
+          vehiculos: vehiculoData // Anidado para mapOrdenFromDB
+        };
+        
         await cacheOne('ordenes_trabajo', ordenConId);
         await addPendingSync('ordenes_trabajo', 'insert', dbOrden);
         useAppStore.getState().setPendingSyncCount(await getPendingCount());
         toast.info('Sin conexión — Orden guardada localmente');
-        return ordenConId;
+        return ordenConId; // mapOrdenFromDB expects full nested object
       }
 
       const { data, error } = await supabase

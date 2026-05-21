@@ -196,3 +196,16 @@ async function executeSyncOperation(item) {
 export function isOnline() {
   return navigator.onLine;
 }
+
+/** Genera un ID seguro para uso offline (fallback si no hay crypto) */
+export function generateId() {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  // Fallback para entornos HTTP locales (no HTTPS)
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    const r = Math.random() * 16 | 0;
+    const v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+}
