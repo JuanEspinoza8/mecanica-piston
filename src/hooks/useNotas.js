@@ -13,6 +13,16 @@ export function useNotas() {
   return useQuery({
     queryKey: NOTAS_KEYS.all,
     queryFn: async () => {
+      if (!isOnline()) {
+        const cached = await getCachedData('notas');
+        if (cached.length > 0) {
+          return cached.sort((a, b) => {
+            if (a.completada !== b.completada) return a.completada ? 1 : -1;
+            return new Date(b.created_at) - new Date(a.created_at);
+          });
+        }
+        return [];
+      }
       try {
         const { data, error } = await supabase
           .from('notas')
@@ -24,16 +34,6 @@ export function useNotas() {
         await cacheData('notas', data);
         return data;
       } catch (err) {
-        if (!isOnline()) {
-          const cached = await getCachedData('notas');
-          if (cached.length > 0) {
-            // Ordenar: pendientes primero, luego por fecha
-            return cached.sort((a, b) => {
-              if (a.completada !== b.completada) return a.completada ? 1 : -1;
-              return new Date(b.created_at) - new Date(a.created_at);
-            });
-          }
-        }
         throw err;
       }
     },
@@ -52,8 +52,9 @@ export function useCreateNota() {
       const payload = { texto: texto.trim(), completada: false };
 
       if (!isOnline()) {
-        const offlineData = { ...payload, id: crypto.randomUUID(), created_at: new Date().toISOString() };
-        await addPendingSync('notas', 'insert', payload);
+        const tempId = crypto.randomUUID();
+        const offlineData = { ...payload, id: tempId, created_at: new Date().toISOString() };
+        await addPendingSync('notas', 'insert', { ...payload, id: tempId });
         const count = await getPendingCount();
         useAppStore.getState().setPendingSyncCount(count);
         // Cache locally for immediate display

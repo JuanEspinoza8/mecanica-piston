@@ -90,7 +90,7 @@ export function usePrefetch() {
           queryFn: async () => {
             const { data, error } = await supabase
               .from('deudas')
-              .select('monto_total, monto_pagado')
+              .select('id, monto_total, monto_pagado')
               .in('estado', ['pendiente', 'parcial']);
             if (error) throw error;
             await cacheData('deudas', data);

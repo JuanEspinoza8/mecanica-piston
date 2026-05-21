@@ -26,6 +26,23 @@ export function useHistorialModificaciones(vehiculoId) {
     queryFn: async () => {
       if (!vehiculoId) return [];
 
+      if (!isOnline()) {
+        const cached = await getCachedByIndex('historial_modificaciones', 'vehiculo_id', vehiculoId);
+        if (cached.length > 0) {
+          return cached
+            .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+            .slice(0, 50)
+            .map((item) => ({
+              id: item.id,
+              tipo: mapTipoAccion(item.tipo_accion),
+              titulo: item.tipo_accion,
+              descripcion: item.descripcion,
+              fecha: item.created_at,
+            }));
+        }
+        return [];
+      }
+
       try {
         const { data, error } = await supabase
           .from('historial_modificaciones')
@@ -48,21 +65,6 @@ export function useHistorialModificaciones(vehiculoId) {
           fecha: item.created_at,
         }));
       } catch (err) {
-        if (!isOnline()) {
-          const cached = await getCachedByIndex('historial_modificaciones', 'vehiculo_id', vehiculoId);
-          if (cached.length > 0) {
-            return cached
-              .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
-              .slice(0, 50)
-              .map((item) => ({
-                id: item.id,
-                tipo: mapTipoAccion(item.tipo_accion),
-                titulo: item.tipo_accion,
-                descripcion: item.descripcion,
-                fecha: item.created_at,
-              }));
-          }
-        }
         throw err;
       }
     },
@@ -78,6 +80,25 @@ export function useActividadReciente() {
   return useQuery({
     queryKey: HISTORIAL_KEYS.reciente,
     queryFn: async () => {
+      if (!isOnline()) {
+        const cached = await getCachedData('historial_modificaciones');
+        if (cached.length > 0) {
+          return cached
+            .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+            .slice(0, 10)
+            .map((item) => ({
+              id: item.id,
+              tipo: mapTipoAccion(item.tipo_accion),
+              titulo: item.tipo_accion,
+              descripcion: item.descripcion,
+              fecha: item.created_at,
+              vehiculo: item.vehiculos || null,
+              vehiculo_id: item.vehiculo_id,
+            }));
+        }
+        return [];
+      }
+
       try {
         const { data, error } = await supabase
           .from('historial_modificaciones')
@@ -108,23 +129,6 @@ export function useActividadReciente() {
           vehiculo_id: item.vehiculo_id,
         }));
       } catch (err) {
-        if (!isOnline()) {
-          const cached = await getCachedData('historial_modificaciones');
-          if (cached.length > 0) {
-            return cached
-              .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
-              .slice(0, 10)
-              .map((item) => ({
-                id: item.id,
-                tipo: mapTipoAccion(item.tipo_accion),
-                titulo: item.tipo_accion,
-                descripcion: item.descripcion,
-                fecha: item.created_at,
-                vehiculo: item.vehiculos || null,
-                vehiculo_id: item.vehiculo_id,
-              }));
-          }
-        }
         throw err;
       }
     },
