@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { ArrowLeft, CarFront, User, Calendar, Wrench, Settings, PackageOpen, Plus, Camera, Trash2, FileText, CheckCircle2, Circle, Loader, PauseCircle, X, Save, Loader2, UploadCloud, DollarSign } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
@@ -11,12 +11,13 @@ import CrearDeudaModal from '../components/CrearDeudaModal';
 import PagoForm from '../components/PagoForm';
 import ConfirmModal from '../components/ConfirmModal';
 
-import { useOrden, useUpdateOrden, useRepuestos, useDeleteRepuesto, useTareas, useAddTarea, useUpdateTarea } from '../hooks/useOrdenes';
+import { useOrden, useUpdateOrden, useRepuestos, useDeleteRepuesto, useTareas, useAddTarea, useUpdateTarea, useDeleteTarea, useDeleteOrden } from '../hooks/useOrdenes';
 import { useArchivos, useFileUpload } from '../hooks/useArchivos';
 import { useDeudasOrden, useDeleteDeuda } from '../hooks/useDeudas';
 
 export default function OrdenDetail() {
   const { id } = useParams();
+  const navigate = useNavigate();
 
   // Queries
   const { data: orden, isLoading: isLoadingOrden } = useOrden(id);
@@ -28,9 +29,11 @@ export default function OrdenDetail() {
 
   // Mutations
   const { mutateAsync: updateOrden } = useUpdateOrden();
+  const { mutateAsync: deleteOrden } = useDeleteOrden();
   const { mutateAsync: deleteRepuesto } = useDeleteRepuesto();
   const { mutateAsync: addTarea } = useAddTarea();
   const { mutateAsync: updateTarea } = useUpdateTarea();
+  const { mutateAsync: deleteTarea } = useDeleteTarea();
   const { mutateAsync: uploadFile, isPending: isUploading } = useFileUpload();
 
   // Estados interactivos
@@ -60,6 +63,7 @@ export default function OrdenDetail() {
   const [showPagoForm, setShowPagoForm] = useState(false);
   const [pagoDeudaId, setPagoDeudaId] = useState(null);
   const [deleteDeudaTarget, setDeleteDeudaTarget] = useState(null);
+  const [deleteOrdenModal, setDeleteOrdenModal] = useState(false);
 
   if (isLoadingOrden || !orden) {
     return (
@@ -84,7 +88,7 @@ export default function OrdenDetail() {
   const handleRemoveRepuesto = async (idToRemove) => {
     if (window.confirm("¿Seguro que deseas eliminar este repuesto?")) {
       try {
-        await deleteRepuesto(idToRemove);
+        await deleteRepuesto({ id: idToRemove, ordenId: orden.id });
         toast.success("Repuesto eliminado");
       } catch (e) {
         toast.error("Error al eliminar repuesto");
@@ -97,7 +101,7 @@ export default function OrdenDetail() {
     const indexActual = cicloEstados.indexOf(tarea.estado);
     const siguienteEstado = cicloEstados[(indexActual + 1) % cicloEstados.length];
     try {
-      await updateTarea({ id: tarea.id, estado: siguienteEstado });
+      await updateTarea({ id: tarea.id, estado: siguienteEstado, ordenId: id });
     } catch (e) {
       toast.error("Error al actualizar tarea");
     }
@@ -130,6 +134,18 @@ export default function OrdenDetail() {
     }
   };
 
+  const handleDeleteTarea = async (tarea, e) => {
+    e.stopPropagation();
+    if (window.confirm(`¿Eliminar la tarea "${tarea.descripcion}"?`)) {
+      try {
+        await deleteTarea({ id: tarea.id, ordenId: orden.id });
+        toast.success("Tarea eliminada");
+      } catch (error) {
+        toast.error("Error al eliminar la tarea");
+      }
+    }
+  };
+
   const openEditModal = () => {
     setEditSintoma(orden.sintoma || '');
     setEditNotas(orden.notas || '');
@@ -147,6 +163,17 @@ export default function OrdenDetail() {
       setEditModalOpen(false);
     } catch (e) {
       toast.error("Error al actualizar orden");
+    }
+  };
+
+  const handleDeleteOrden = async () => {
+    try {
+      await deleteOrden(orden.id);
+      toast.success("Orden eliminada exitosamente");
+      setDeleteOrdenModal(false);
+      navigate('/ordenes');
+    } catch (e) {
+      toast.error("Error al eliminar la orden");
     }
   };
 
@@ -266,13 +293,22 @@ export default function OrdenDetail() {
               ))}
             </div>
           </div>
-          <button 
-            onClick={openEditModal}
-            className="flex items-center justify-center text-sm font-semibold text-white bg-black dark:bg-red-600 hover:bg-neutral-900 dark:hover:bg-red-700 px-6 py-2.5 rounded-full transition-colors shadow-lg shrink-0"
-          >
-            <Settings className="w-4 h-4 mr-2" />
-            Editar Orden
-          </button>
+          <div className="flex gap-2 w-full sm:w-auto mt-2 sm:mt-0">
+            <button 
+              onClick={() => setDeleteOrdenModal(true)}
+              className="flex items-center justify-center text-sm font-semibold text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/30 hover:bg-red-100 dark:hover:bg-red-900/50 px-4 py-2.5 rounded-full transition-colors shrink-0"
+              title="Eliminar Orden"
+            >
+              <Trash2 className="w-5 h-5" />
+            </button>
+            <button 
+              onClick={openEditModal}
+              className="flex-1 sm:flex-none flex items-center justify-center text-sm font-semibold text-white bg-black dark:bg-red-600 hover:bg-neutral-900 dark:hover:bg-red-700 px-6 py-2.5 rounded-full transition-colors shadow-lg"
+            >
+              <Settings className="w-4 h-4 mr-2" />
+              Editar Orden
+            </button>
+          </div>
         </div>
       </div>
 
@@ -380,9 +416,18 @@ export default function OrdenDetail() {
                         </span>
                       </div>
                     </div>
-                    <span className={`ml-4 px-2 py-1 rounded text-xs font-bold border shrink-0 ${getEstadoBadge(tarea.estado)}`}>
-                      {tarea.estado}
-                    </span>
+                    <div className="flex items-center ml-4 shrink-0">
+                      <span className={`px-2 py-1 rounded text-xs font-bold border mr-2 ${getEstadoBadge(tarea.estado)}`}>
+                        {tarea.estado}
+                      </span>
+                      <button
+                        onClick={(e) => handleDeleteTarea(tarea, e)}
+                        className="p-1.5 text-neutral-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-lg transition-colors"
+                        title="Eliminar tarea"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
                 );
               })}
@@ -818,6 +863,16 @@ export default function OrdenDetail() {
         titulo="¿Eliminar esta deuda?"
         mensaje={`Se eliminará la deuda "${deleteDeudaTarget?.concepto}" por $${Number(deleteDeudaTarget?.monto_total || 0).toLocaleString('es-AR')}. Los pagos asociados no se borrarán.`}
         textoConfirmar="Sí, eliminar deuda"
+      />
+
+      {/* Confirmar eliminar orden */}
+      <ConfirmModal
+        isOpen={deleteOrdenModal}
+        onClose={() => setDeleteOrdenModal(false)}
+        onConfirm={handleDeleteOrden}
+        titulo="¿Eliminar esta orden?"
+        mensaje={`Se eliminará permanentemente la orden ${displayId} y todos sus datos asociados (tareas, repuestos, deudas y pagos). Esta acción no se puede deshacer.`}
+        textoConfirmar="Sí, eliminar orden"
       />
 
     </div>

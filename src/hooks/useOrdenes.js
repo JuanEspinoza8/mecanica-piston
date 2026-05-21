@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
-import { cacheData, cacheOne, getCachedData, getCachedById, getCachedByIndex, removeCached, addPendingSync, isOnline, getPendingCount, generateId } from '../db/offlineService';
+import { cacheData, cacheOne, getCachedData, getCachedById, getCachedByIndex, removeCached, offlineCascadeDelete, addPendingSync, isOnline, getPendingCount, generateId } from '../db/offlineService';
 import useAppStore from '../store/useAppStore';
 import { toast } from 'sonner';
 
@@ -77,6 +77,13 @@ export function useOrdenes(vehiculoId) {
         await cacheData('ordenes_trabajo', data);
         return data.map(mapOrdenFromDB);
       } catch (err) {
+        let cached;
+        if (vehiculoId) {
+          cached = await getCachedByIndex('ordenes_trabajo', 'vehiculo_id', vehiculoId);
+        } else {
+          cached = await getCachedData('ordenes_trabajo');
+        }
+        if (cached && cached.length > 0) return cached.map(mapOrdenFromDB);
         throw err;
       }
     },
@@ -104,12 +111,15 @@ export function useOrden(id) {
             repuestos ( costo, cantidad )
           `)
           .eq('id', id)
-          .single();
+          .maybeSingle();
 
         if (error) throw error;
+        if (!data) return null;
         await cacheOne('ordenes_trabajo', data);
         return mapOrdenFromDB(data);
       } catch (err) {
+        const cached = await getCachedById('ordenes_trabajo', id);
+        if (cached) return mapOrdenFromDB(cached);
         throw err;
       }
     },
@@ -174,6 +184,9 @@ export function useCreateOrden() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ORDENES_KEYS.all });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['historial'] });
+      queryClient.invalidateQueries({ queryKey: ['economia'] });
     },
   });
 }
@@ -207,6 +220,52 @@ export function useUpdateOrden() {
     onSuccess: (data, variables) => {
       queryClient.invalidateQueries({ queryKey: ORDENES_KEYS.all });
       queryClient.invalidateQueries({ queryKey: ORDENES_KEYS.detail(variables.id) });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['historial'] });
+      queryClient.invalidateQueries({ queryKey: ['economia'] });
+    },
+  });
+}
+
+export function useDeleteOrden() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (id) => {
+      if (!isOnline()) {
+        await offlineCascadeDelete('ordenes_trabajo', id);
+
+        await addPendingSync('ordenes_trabajo', 'delete', { id });
+        useAppStore.getState().setPendingSyncCount(await getPendingCount());
+        toast.info('Sin conexión — Eliminación de orden pendiente de sincronizar');
+        return id;
+      }
+
+      // Eliminar deudas y pagos asociados a la orden
+      await supabase.from('deudas').delete().eq('orden_id', id);
+      await supabase.from('pagos').delete().eq('orden_id', id);
+
+      // Eliminar dependencias
+      await supabase.from('tareas_orden').delete().eq('orden_id', id);
+      await supabase.from('repuestos').delete().eq('orden_id', id);
+      // Los archivos almacenados en Storage no se borran automáticamente, pero sí el registro
+      await supabase.from('archivos').delete().eq('orden_id', id);
+
+      // Finalmente eliminar la orden
+      const { error } = await supabase
+        .from('ordenes_trabajo')
+        .delete()
+        .eq('id', id);
+      if (error) throw error;
+      await removeCached('ordenes_trabajo', id);
+      return id;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ORDENES_KEYS.all });
+      queryClient.invalidateQueries({ queryKey: ['deudas'] });
+      queryClient.invalidateQueries({ queryKey: ['pagos'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['historial'] });
+      queryClient.invalidateQueries({ queryKey: ['economia'] });
     },
   });
 }
@@ -232,6 +291,8 @@ export function useRepuestos(ordenId) {
         await cacheData('repuestos', data);
         return data;
       } catch (err) {
+        const cached = await getCachedByIndex('repuestos', 'orden_id', ordenId);
+        if (cached && cached.length > 0) return cached;
         throw err;
       }
     },
@@ -326,6 +387,8 @@ export function useTareas(ordenId) {
         await cacheData('tareas_orden', data);
         return data;
       } catch (err) {
+        const cached = await getCachedByIndex('tareas_orden', 'orden_id', ordenId);
+        if (cached && cached.length > 0) return cached;
         throw err;
       }
     },
@@ -372,7 +435,13 @@ export function useUpdateTarea() {
   return useMutation({
     mutationFn: async ({ id, estado, ordenId }) => {
       if (!isOnline()) {
-        toast.warning('Sin conexión — El cambio se sincronizará al reconectar');
+        const tarea = await getCachedById('tareas_orden', id);
+        if (tarea) {
+          await cacheOne('tareas_orden', { ...tarea, estado });
+        }
+        await addPendingSync('tareas_orden', 'update', { id, estado });
+        useAppStore.getState().setPendingSyncCount(await getPendingCount());
+        toast.info('Sin conexión — Cambio guardado localmente');
         return { id, orden_id: ordenId, estado };
       }
 
@@ -383,6 +452,36 @@ export function useUpdateTarea() {
         .select()
         .single();
       if (error) throw error;
+      return data;
+    },
+    onSuccess: (data) => {
+      if (data && data.orden_id) {
+        queryClient.invalidateQueries({ queryKey: ORDENES_KEYS.tareas(data.orden_id) });
+      }
+    },
+  });
+}
+
+export function useDeleteTarea() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, ordenId }) => {
+      if (!isOnline()) {
+        await removeCached('tareas_orden', id);
+        await addPendingSync('tareas_orden', 'delete', { id });
+        useAppStore.getState().setPendingSyncCount(await getPendingCount());
+        toast.info('Sin conexión — Eliminación pendiente de sincronizar');
+        return { orden_id: ordenId };
+      }
+
+      const { error, data } = await supabase
+        .from('tareas_orden')
+        .delete()
+        .eq('id', id)
+        .select('orden_id')
+        .single();
+      if (error) throw error;
+      await removeCached('tareas_orden', id);
       return data;
     },
     onSuccess: (data) => {

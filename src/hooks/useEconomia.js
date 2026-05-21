@@ -6,6 +6,15 @@ export function useEconomia() {
   return useQuery({
     queryKey: ['economia'],
     queryFn: async () => {
+      if (!isOnline()) {
+        const [pagos, deudas, repuestos] = await Promise.all([
+          getCachedData('pagos'),
+          getCachedData('deudas'),
+          getCachedData('repuestos'),
+        ]);
+        return buildEconomiaData(pagos, deudas, repuestos, new Date());
+      }
+
       try {
         const now = new Date();
         const hace12Meses = new Date(now.getFullYear() - 1, now.getMonth(), 1).toISOString();

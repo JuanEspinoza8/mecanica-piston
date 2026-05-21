@@ -30,6 +30,8 @@ export function useDeudas(clienteId) {
         await cacheData('deudas', data);
         return data;
       } catch (err) {
+        const cached = await getCachedByIndex('deudas', 'cliente_id', clienteId);
+        if (cached && cached.length > 0) return cached;
         throw err;
       }
     },
@@ -56,6 +58,8 @@ export function useDeudasPendientes(clienteId) {
         if (error) throw error;
         return data;
       } catch (err) {
+        const cached = await getCachedByIndex('deudas', 'cliente_id', clienteId);
+        if (cached) return cached.filter(d => d.estado === 'pendiente' || d.estado === 'parcial');
         throw err;
       }
     },
@@ -82,6 +86,8 @@ export function useDeudasOrden(ordenId) {
         await cacheData('deudas', data);
         return data;
       } catch (err) {
+        const cached = await getCachedByIndex('deudas', 'orden_id', ordenId);
+        if (cached && cached.length > 0) return cached;
         throw err;
       }
     },
@@ -114,6 +120,8 @@ export function useDeudasVehiculo(vehiculoId) {
         await cacheData('deudas', data);
         return data;
       } catch (err) {
+        const cached = await getCachedData('deudas');
+        if (cached && cached.length > 0) return cached;
         throw err;
       }
     },
@@ -187,6 +195,8 @@ export function useCreateDeuda() {
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: DEUDAS_KEYS.all });
       queryClient.invalidateQueries({ queryKey: ['saldo', data.cliente_id] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['economia'] });
       toast.success('Deuda registrada correctamente');
     },
     onError: (error) => {
@@ -219,6 +229,8 @@ export function useDeleteDeuda() {
       queryClient.invalidateQueries({ queryKey: DEUDAS_KEYS.all });
       queryClient.invalidateQueries({ queryKey: ['saldo', data.cliente_id] });
       queryClient.invalidateQueries({ queryKey: ['pagos'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['economia'] });
       toast.success('Deuda eliminada');
     },
     onError: () => {

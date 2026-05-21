@@ -38,6 +38,8 @@ export function useArchivos(ordenId) {
           return { ...archivo, url: publicUrlData.publicUrl };
         });
       } catch (err) {
+        const cached = await getCachedByIndex('archivos', 'orden_id', ordenId);
+        if (cached && cached.length > 0) return cached.map(a => ({ ...a, url: a.ruta_storage || '' }));
         throw err;
       }
     },
@@ -85,7 +87,8 @@ export function useArchivosVehiculo(vehiculoId) {
           };
         });
       } catch (err) {
-        throw err;
+        // Fallback for offline if network request fails despite isOnline() being true
+        return [];
       }
     },
     enabled: !!vehiculoId,

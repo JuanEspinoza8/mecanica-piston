@@ -31,7 +31,7 @@ export function usePrefetch() {
             await cacheData('clientes', data);
             return data;
           },
-          staleTime: 5 * 60 * 1000 // 5 minutos
+          staleTime: 5 * 60 * 1000
         });
 
         // 2. Prefetch Vehículos
@@ -52,9 +52,9 @@ export function usePrefetch() {
           staleTime: 5 * 60 * 1000
         });
 
-        // 3. Prefetch Órdenes (las más recientes)
+        // 3. Prefetch Órdenes de Trabajo (y sus dependencias)
         queryClient.prefetchQuery({
-          queryKey: ORDENES_KEYS.list({ vehiculoId: undefined }), // Lista principal
+          queryKey: ORDENES_KEYS.list({ vehiculoId: undefined }),
           queryFn: async () => {
             const { data, error } = await supabase
               .from('ordenes_trabajo')
@@ -84,17 +84,103 @@ export function usePrefetch() {
           staleTime: 5 * 60 * 1000
         });
 
-        // 4. Prefetch Deudas (Para la pantalla de Finanzas)
+        // 4. Prefetch Deudas
         queryClient.prefetchQuery({
-          queryKey: DEUDAS_KEYS.total,
+          queryKey: DEUDAS_KEYS.all,
           queryFn: async () => {
             const { data, error } = await supabase
               .from('deudas')
-              .select('id, monto_total, monto_pagado')
-              .in('estado', ['pendiente', 'parcial']);
+              .select('*, clientes (id, nombre, apellido)')
+              .order('created_at', { ascending: false });
             if (error) throw error;
             await cacheData('deudas', data);
-            return data.reduce((sum, d) => sum + (Number(d.monto_total) - Number(d.monto_pagado)), 0);
+            return data;
+          },
+          staleTime: 5 * 60 * 1000
+        });
+
+        // 5. Prefetch Pagos
+        queryClient.prefetchQuery({
+          queryKey: ['pagos', 'all'],
+          queryFn: async () => {
+            const { data, error } = await supabase
+              .from('pagos')
+              .select('*')
+              .order('fecha', { ascending: false });
+            if (error) throw error;
+            await cacheData('pagos', data);
+            return data;
+          },
+          staleTime: 5 * 60 * 1000
+        });
+
+        // 6. Prefetch Repuestos
+        queryClient.prefetchQuery({
+          queryKey: ['repuestos', 'all'],
+          queryFn: async () => {
+            const { data, error } = await supabase
+              .from('repuestos')
+              .select('*');
+            if (error) throw error;
+            await cacheData('repuestos', data);
+            return data;
+          },
+          staleTime: 5 * 60 * 1000
+        });
+
+        // 7. Prefetch Tareas
+        queryClient.prefetchQuery({
+          queryKey: ['tareas_orden', 'all'],
+          queryFn: async () => {
+            const { data, error } = await supabase
+              .from('tareas_orden')
+              .select('*');
+            if (error) throw error;
+            await cacheData('tareas_orden', data);
+            return data;
+          },
+          staleTime: 5 * 60 * 1000
+        });
+
+        // 8. Prefetch Archivos
+        queryClient.prefetchQuery({
+          queryKey: ['archivos', 'all'],
+          queryFn: async () => {
+            const { data, error } = await supabase
+              .from('archivos')
+              .select('*');
+            if (error) throw error;
+            await cacheData('archivos', data);
+            return data;
+          },
+          staleTime: 5 * 60 * 1000
+        });
+
+        // 9. Prefetch Notas
+        queryClient.prefetchQuery({
+          queryKey: ['notas', 'all'],
+          queryFn: async () => {
+            const { data, error } = await supabase
+              .from('notas')
+              .select('*');
+            if (error) throw error;
+            await cacheData('notas', data);
+            return data;
+          },
+          staleTime: 5 * 60 * 1000
+        });
+
+        // 10. Prefetch Historial
+        queryClient.prefetchQuery({
+          queryKey: ['historial', 'all'],
+          queryFn: async () => {
+            const { data, error } = await supabase
+              .from('historial_modificaciones')
+              .select('*')
+              .order('created_at', { ascending: false });
+            if (error) throw error;
+            await cacheData('historial_modificaciones', data);
+            return data;
           },
           staleTime: 5 * 60 * 1000
         });

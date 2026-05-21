@@ -87,6 +87,49 @@ export async function removeCached(tabla, id) {
   }
 }
 
+/**
+ * Borra en cascada registros asociados en la caché local (IndexedDB).
+ * No agrega operaciones a pending_sync (Supabase ya tiene ON DELETE CASCADE o los hooks se encargan de agregar el padre).
+ */
+export async function offlineCascadeDelete(tabla, id) {
+  try {
+    if (tabla === 'clientes') {
+      const vehiculos = await getCachedByIndex('vehiculos', 'cliente_id', id);
+      for (const v of vehiculos) await offlineCascadeDelete('vehiculos', v.id);
+      
+      const deudas = await getCachedByIndex('deudas', 'cliente_id', id);
+      for (const d of deudas) await offlineCascadeDelete('deudas', d.id);
+      
+      const pagos = await getCachedByIndex('pagos', 'cliente_id', id);
+      for (const p of pagos) await offlineCascadeDelete('pagos', p.id);
+    } 
+    else if (tabla === 'vehiculos') {
+      const ordenes = await getCachedByIndex('ordenes_trabajo', 'vehiculo_id', id);
+      for (const o of ordenes) await offlineCascadeDelete('ordenes_trabajo', o.id);
+    }
+    else if (tabla === 'ordenes_trabajo') {
+      const deudas = await getCachedByIndex('deudas', 'orden_id', id);
+      for (const d of deudas) await offlineCascadeDelete('deudas', d.id);
+      
+      const pagos = await getCachedByIndex('pagos', 'orden_id', id);
+      for (const p of pagos) await offlineCascadeDelete('pagos', p.id);
+      
+      const tareas = await getCachedByIndex('tareas_orden', 'orden_id', id);
+      for (const t of tareas) await offlineCascadeDelete('tareas_orden', t.id);
+      
+      const repuestos = await getCachedByIndex('repuestos', 'orden_id', id);
+      for (const r of repuestos) await offlineCascadeDelete('repuestos', r.id);
+      
+      const archivos = await getCachedByIndex('archivos', 'orden_id', id);
+      for (const a of archivos) await offlineCascadeDelete('archivos', a.id);
+    }
+
+    await removeCached(tabla, id);
+  } catch (error) {
+    console.error(`[Offline Cascade Delete] Error borrando ${tabla}/${id}:`, error);
+  }
+}
+
 // =============================================================================
 // PENDING SYNC: Cola de operaciones offline
 // =============================================================================
@@ -179,6 +222,14 @@ async function executeSyncOperation(item) {
       break;
     }
     case 'delete': {
+      if (tabla === 'ordenes_trabajo') {
+        await supabase.from('deudas').delete().eq('orden_id', datos.id);
+        await supabase.from('pagos').delete().eq('orden_id', datos.id);
+        await supabase.from('tareas_orden').delete().eq('orden_id', datos.id);
+        await supabase.from('repuestos').delete().eq('orden_id', datos.id);
+        await supabase.from('archivos').delete().eq('orden_id', datos.id);
+      }
+      
       const { error } = await supabase.from(tabla).delete().eq('id', datos.id);
       if (error) throw error;
       break;

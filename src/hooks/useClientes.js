@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
 import { toast } from 'sonner';
-import { cacheData, cacheOne, getCachedData, getCachedById, removeCached, addPendingSync, isOnline, getPendingCount, generateId } from '../db/offlineService';
+import { cacheData, cacheOne, getCachedData, getCachedById, removeCached, offlineCascadeDelete, addPendingSync, isOnline, getPendingCount, generateId } from '../db/offlineService';
 import useAppStore from '../store/useAppStore';
 
 // Keys para react-query
@@ -31,6 +31,8 @@ export function useClientes() {
         await cacheData('clientes', data);
         return data;
       } catch (err) {
+        const cached = await getCachedData('clientes');
+        if (cached && cached.length > 0) return cached;
         throw err;
       }
     },
@@ -59,6 +61,8 @@ export function useCliente(id) {
         await cacheOne('clientes', data);
         return data;
       } catch (err) {
+        const cached = await getCachedById('clientes', id);
+        if (cached) return cached;
         throw err;
       }
     },
@@ -139,7 +143,7 @@ export function useDeleteCliente() {
   return useMutation({
     mutationFn: async (id) => {
       if (!isOnline()) {
-        await removeCached('clientes', id);
+        await offlineCascadeDelete('clientes', id);
         await addPendingSync('clientes', 'delete', { id });
         useAppStore.getState().setPendingSyncCount(await getPendingCount());
         toast.info('Sin conexión — Eliminación pendiente de sincronizar');

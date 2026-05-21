@@ -25,6 +25,8 @@ export function usePagos(clienteId) {
         await cacheData('pagos', data);
         return data;
       } catch (err) {
+        const cached = await getCachedByIndex('pagos', 'cliente_id', clienteId);
+        if (cached && cached.length > 0) return cached;
         throw err;
       }
     },
@@ -69,6 +71,14 @@ export function useCreatePago() {
               en_cuotas: deuda.en_cuotas,
               cantidad_cuotas: deuda.cantidad_cuotas
             };
+            
+            const nuevoMontoPagado = Number(deuda.monto_pagado || 0) + monto;
+            const nuevoEstado = nuevoMontoPagado >= Number(deuda.monto_total) ? 'pagada' : 'parcial';
+            
+            // Actualizar Deuda localmente para reflejar el pago offline
+            await cacheOne('deudas', { ...deuda, monto_pagado: nuevoMontoPagado, estado: nuevoEstado });
+            // Encolar actualización de deuda
+            await addPendingSync('deudas', 'update', { id: deuda_id, monto_pagado: nuevoMontoPagado, estado: nuevoEstado });
           }
         }
 
@@ -158,6 +168,7 @@ export function useCreatePago() {
       queryClient.invalidateQueries({ queryKey: ['saldo', variables.cliente_id] });
       queryClient.invalidateQueries({ queryKey: DEUDAS_KEYS.all });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['economia'] });
       if (isOnline()) toast.success('Pago registrado exitosamente');
     },
     onError: (error) => {
@@ -213,6 +224,7 @@ export function useDeletePago() {
       queryClient.invalidateQueries({ queryKey: ['saldo', data.cliente_id] });
       queryClient.invalidateQueries({ queryKey: DEUDAS_KEYS.all });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['economia'] });
       if (isOnline()) toast.success('Pago eliminado');
     },
     onError: () => {
