@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
-import { cacheData, cacheOne, getCachedData, getCachedById, getCachedByIndex, removeCached, addPendingSync, isOnline, getPendingCount } from '../db/offlineService';
+import { cacheData, cacheOne, getCachedData, getCachedById, getCachedByIndex, removeCached, offlineCascadeDelete, addPendingSync, isOnline, getPendingCount, generateId } from '../db/offlineService';
 import useAppStore from '../store/useAppStore';
 import { toast } from 'sonner';
 
@@ -38,6 +38,15 @@ export function useVehiculos(clienteId = null) {
   return useQuery({
     queryKey: clienteId ? VEHICULOS_KEYS.list(clienteId) : VEHICULOS_KEYS.all,
     queryFn: async () => {
+      if (!isOnline()) {
+        let cached;
+        if (clienteId) {
+          cached = await getCachedByIndex('vehiculos', 'cliente_id', clienteId);
+        } else {
+          cached = await getCachedData('vehiculos');
+        }
+        return cached.map(mapFromDB);
+      }
       try {
         let query = supabase
           .from('vehiculos')
@@ -63,15 +72,13 @@ export function useVehiculos(clienteId = null) {
         await cacheData('vehiculos', data);
         return data.map(mapFromDB);
       } catch (err) {
-        if (!isOnline()) {
-          let cached;
-          if (clienteId) {
-            cached = await getCachedByIndex('vehiculos', 'cliente_id', clienteId);
-          } else {
-            cached = await getCachedData('vehiculos');
-          }
-          if (cached.length > 0) return cached.map(mapFromDB);
+        let cached;
+        if (clienteId) {
+          cached = await getCachedByIndex('vehiculos', 'cliente_id', clienteId);
+        } else {
+          cached = await getCachedData('vehiculos');
         }
+        if (cached && cached.length > 0) return cached.map(mapFromDB);
         throw err;
       }
     },
@@ -83,6 +90,11 @@ export function useVehiculo(id) {
   return useQuery({
     queryKey: VEHICULOS_KEYS.detail(id),
     queryFn: async () => {
+      if (!id) return null;
+      if (!isOnline()) {
+        const cached = await getCachedById('vehiculos', id);
+        return cached ? mapFromDB(cached) : null;
+      }
       try {
         const { data, error } = await supabase
           .from('vehiculos')
@@ -104,10 +116,8 @@ export function useVehiculo(id) {
         await cacheOne('vehiculos', data);
         return mapFromDB(data);
       } catch (err) {
-        if (!isOnline()) {
-          const cached = await getCachedById('vehiculos', id);
-          if (cached) return mapFromDB(cached);
-        }
+        const cached = await getCachedById('vehiculos', id);
+        if (cached) return mapFromDB(cached);
         throw err;
       }
     },
@@ -124,10 +134,29 @@ export function useCreateVehiculo() {
       const dbVehiculo = mapToDB(nuevoVehiculo);
 
       if (!isOnline()) {
-        const tempId = crypto.randomUUID();
-        const vehiculoConId = { ...dbVehiculo, id: tempId, created_at: new Date().toISOString() };
+        const tempId = generateId();
+        
+        let clienteData = null;
+        if (dbVehiculo.cliente_id) {
+          const cliente = await getCachedById('clientes', dbVehiculo.cliente_id);
+          if (cliente) {
+            clienteData = {
+              id: cliente.id,
+              nombre: cliente.nombre,
+              apellido: cliente.apellido
+            };
+          }
+        }
+        
+        const vehiculoConId = { 
+          ...dbVehiculo, 
+          id: tempId, 
+          created_at: new Date().toISOString(),
+          clientes: clienteData
+        };
+        
         await cacheOne('vehiculos', vehiculoConId);
-        await addPendingSync('vehiculos', 'insert', dbVehiculo);
+        await addPendingSync('vehiculos', 'insert', { ...dbVehiculo, id: tempId });
         useAppStore.getState().setPendingSyncCount(await getPendingCount());
         toast.info('Sin conexión — Vehículo guardado localmente');
         return mapFromDB(vehiculoConId);
@@ -191,7 +220,7 @@ export function useDeleteVehiculo() {
   return useMutation({
     mutationFn: async (id) => {
       if (!isOnline()) {
-        await removeCached('vehiculos', id);
+        await offlineCascadeDelete('vehiculos', id);
         await addPendingSync('vehiculos', 'delete', { id });
         useAppStore.getState().setPendingSyncCount(await getPendingCount());
         toast.info('Sin conexión — Eliminación pendiente de sincronizar');

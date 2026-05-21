@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
 import { toast } from 'sonner';
-import { cacheData, getCachedData, getCachedByIndex, removeCached, addPendingSync, isOnline, getPendingCount } from '../db/offlineService';
+import { cacheData, cacheOne, getCachedData, getCachedById, getCachedByIndex, removeCached, addPendingSync, isOnline, getPendingCount, generateId } from '../db/offlineService';
 import useAppStore from '../store/useAppStore';
 
 export const DEUDAS_KEYS = {
@@ -16,6 +16,10 @@ export function useDeudas(clienteId) {
   return useQuery({
     queryKey: DEUDAS_KEYS.cliente(clienteId),
     queryFn: async () => {
+      if (!isOnline()) {
+        const cached = await getCachedByIndex('deudas', 'cliente_id', clienteId);
+        return cached || [];
+      }
       try {
         const { data, error } = await supabase
           .from('deudas')
@@ -26,10 +30,8 @@ export function useDeudas(clienteId) {
         await cacheData('deudas', data);
         return data;
       } catch (err) {
-        if (!isOnline()) {
-          const cached = await getCachedByIndex('deudas', 'cliente_id', clienteId);
-          if (cached.length > 0) return cached;
-        }
+        const cached = await getCachedByIndex('deudas', 'cliente_id', clienteId);
+        if (cached && cached.length > 0) return cached;
         throw err;
       }
     },
@@ -42,6 +44,10 @@ export function useDeudasPendientes(clienteId) {
   return useQuery({
     queryKey: [...DEUDAS_KEYS.cliente(clienteId), 'pendientes'],
     queryFn: async () => {
+      if (!isOnline()) {
+        const cached = await getCachedByIndex('deudas', 'cliente_id', clienteId);
+        return cached.filter(d => d.estado === 'pendiente' || d.estado === 'parcial') || [];
+      }
       try {
         const { data, error } = await supabase
           .from('deudas')
@@ -52,10 +58,8 @@ export function useDeudasPendientes(clienteId) {
         if (error) throw error;
         return data;
       } catch (err) {
-        if (!isOnline()) {
-          const cached = await getCachedByIndex('deudas', 'cliente_id', clienteId);
-          return cached.filter(d => d.estado === 'pendiente' || d.estado === 'parcial');
-        }
+        const cached = await getCachedByIndex('deudas', 'cliente_id', clienteId);
+        if (cached) return cached.filter(d => d.estado === 'pendiente' || d.estado === 'parcial');
         throw err;
       }
     },
@@ -68,6 +72,10 @@ export function useDeudasOrden(ordenId) {
   return useQuery({
     queryKey: DEUDAS_KEYS.orden(ordenId),
     queryFn: async () => {
+      if (!isOnline()) {
+        const cached = await getCachedByIndex('deudas', 'orden_id', ordenId);
+        return cached || [];
+      }
       try {
         const { data, error } = await supabase
           .from('deudas')
@@ -78,10 +86,8 @@ export function useDeudasOrden(ordenId) {
         await cacheData('deudas', data);
         return data;
       } catch (err) {
-        if (!isOnline()) {
-          const cached = await getCachedByIndex('deudas', 'orden_id', ordenId);
-          if (cached.length > 0) return cached;
-        }
+        const cached = await getCachedByIndex('deudas', 'orden_id', ordenId);
+        if (cached && cached.length > 0) return cached;
         throw err;
       }
     },
@@ -94,6 +100,10 @@ export function useDeudasVehiculo(vehiculoId) {
   return useQuery({
     queryKey: ['deudas', 'vehiculo', vehiculoId],
     queryFn: async () => {
+      if (!isOnline()) {
+        const cached = await getCachedData('deudas');
+        return cached || [];
+      }
       try {
         const { data: ordenes } = await supabase
           .from('ordenes_trabajo')
@@ -110,11 +120,8 @@ export function useDeudasVehiculo(vehiculoId) {
         await cacheData('deudas', data);
         return data;
       } catch (err) {
-        if (!isOnline()) {
-          // Fallback: get all cached deudas (can't filter by vehicle offline easily)
-          const cached = await getCachedData('deudas');
-          return cached;
-        }
+        const cached = await getCachedData('deudas');
+        if (cached && cached.length > 0) return cached;
         throw err;
       }
     },
@@ -139,9 +146,39 @@ export function useCreateDeuda() {
       };
 
       if (!isOnline()) {
-        const offlineId = crypto.randomUUID();
-        const offlineData = { ...payload, id: offlineId, created_at: new Date().toISOString() };
-        await addPendingSync('deudas', 'insert', payload);
+        const offlineId = generateId();
+        
+        let ordenData = null;
+        if (payload.orden_id) {
+          const orden = await getCachedById('ordenes_trabajo', payload.orden_id);
+          if (orden) {
+            let vehiculoData = null;
+            if (orden.vehiculo_id) {
+               const vehiculo = await getCachedById('vehiculos', orden.vehiculo_id);
+               if (vehiculo) {
+                 vehiculoData = {
+                   patente: vehiculo.patente,
+                   marca: vehiculo.marca,
+                   modelo: vehiculo.modelo
+                 };
+               }
+            }
+            ordenData = {
+              id: orden.id,
+              descripcion: orden.descripcion,
+              vehiculos: vehiculoData
+            };
+          }
+        }
+
+        const offlineData = { 
+          ...payload, 
+          id: offlineId, 
+          created_at: new Date().toISOString(),
+          ordenes_trabajo: ordenData
+        };
+        await cacheOne('deudas', offlineData);
+        await addPendingSync('deudas', 'insert', { ...payload, id: offlineId });
         const count = await getPendingCount();
         useAppStore.getState().setPendingSyncCount(count);
         return offlineData;
@@ -158,6 +195,8 @@ export function useCreateDeuda() {
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: DEUDAS_KEYS.all });
       queryClient.invalidateQueries({ queryKey: ['saldo', data.cliente_id] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['economia'] });
       toast.success('Deuda registrada correctamente');
     },
     onError: (error) => {
@@ -190,6 +229,8 @@ export function useDeleteDeuda() {
       queryClient.invalidateQueries({ queryKey: DEUDAS_KEYS.all });
       queryClient.invalidateQueries({ queryKey: ['saldo', data.cliente_id] });
       queryClient.invalidateQueries({ queryKey: ['pagos'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['economia'] });
       toast.success('Deuda eliminada');
     },
     onError: () => {

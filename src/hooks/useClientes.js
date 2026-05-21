@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
 import { toast } from 'sonner';
-import { cacheData, cacheOne, getCachedData, getCachedById, removeCached, addPendingSync, isOnline, getPendingCount } from '../db/offlineService';
+import { cacheData, cacheOne, getCachedData, getCachedById, removeCached, offlineCascadeDelete, addPendingSync, isOnline, getPendingCount, generateId } from '../db/offlineService';
 import useAppStore from '../store/useAppStore';
 
 // Keys para react-query
@@ -15,6 +15,10 @@ export function useClientes() {
   return useQuery({
     queryKey: CLIENTES_KEYS.all,
     queryFn: async () => {
+      if (!isOnline()) {
+        const cached = await getCachedData('clientes');
+        return cached || [];
+      }
       try {
         const { data, error } = await supabase
           .from('clientes')
@@ -27,11 +31,8 @@ export function useClientes() {
         await cacheData('clientes', data);
         return data;
       } catch (err) {
-        // Fallback: leer desde cache offline
-        if (!isOnline()) {
-          const cached = await getCachedData('clientes');
-          if (cached.length > 0) return cached;
-        }
+        const cached = await getCachedData('clientes');
+        if (cached && cached.length > 0) return cached;
         throw err;
       }
     },
@@ -43,6 +44,11 @@ export function useCliente(id) {
   return useQuery({
     queryKey: CLIENTES_KEYS.detail(id),
     queryFn: async () => {
+      if (!id) return null;
+      if (!isOnline()) {
+        const cached = await getCachedById('clientes', id);
+        return cached || null;
+      }
       try {
         const { data, error } = await supabase
           .from('clientes')
@@ -55,10 +61,8 @@ export function useCliente(id) {
         await cacheOne('clientes', data);
         return data;
       } catch (err) {
-        if (!isOnline()) {
-          const cached = await getCachedById('clientes', id);
-          if (cached) return cached;
-        }
+        const cached = await getCachedById('clientes', id);
+        if (cached) return cached;
         throw err;
       }
     },
@@ -74,10 +78,10 @@ export function useCreateCliente() {
     mutationFn: async (nuevoCliente) => {
       if (!isOnline()) {
         // Offline: guardar localmente y encolar
-        const tempId = crypto.randomUUID();
+        const tempId = generateId();
         const clienteConId = { ...nuevoCliente, id: tempId, created_at: new Date().toISOString() };
         await cacheOne('clientes', clienteConId);
-        await addPendingSync('clientes', 'insert', nuevoCliente);
+        await addPendingSync('clientes', 'insert', { ...nuevoCliente, id: tempId });
         useAppStore.getState().setPendingSyncCount(await getPendingCount());
         toast.info('Sin conexión — Cliente guardado localmente');
         return clienteConId;
@@ -139,7 +143,7 @@ export function useDeleteCliente() {
   return useMutation({
     mutationFn: async (id) => {
       if (!isOnline()) {
-        await removeCached('clientes', id);
+        await offlineCascadeDelete('clientes', id);
         await addPendingSync('clientes', 'delete', { id });
         useAppStore.getState().setPendingSyncCount(await getPendingCount());
         toast.info('Sin conexión — Eliminación pendiente de sincronizar');

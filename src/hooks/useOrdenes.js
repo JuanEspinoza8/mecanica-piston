@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
-import { cacheData, cacheOne, getCachedData, getCachedById, getCachedByIndex, removeCached, addPendingSync, isOnline, getPendingCount } from '../db/offlineService';
+import { cacheData, cacheOne, getCachedData, getCachedById, getCachedByIndex, removeCached, offlineCascadeDelete, addPendingSync, isOnline, getPendingCount, generateId } from '../db/offlineService';
 import useAppStore from '../store/useAppStore';
 import { toast } from 'sonner';
 
@@ -23,22 +23,16 @@ const mapOrdenToDB = (orden) => {
     ...rest,
     vehiculo_id: vehiculoId,
     descripcion: sintoma,
-    // clienteId no va a la BD, se deduce por vehiculo_id
   };
 };
 
 const mapOrdenFromDB = (orden) => {
   if (!orden) return null;
-  
-  // Calcular total (repuestos)
-  // En una app real también sumaríamos mano de obra si existiese en la BD
   const totalRepuestos = orden.repuestos?.reduce((sum, rep) => sum + (Number(rep.costo) * Number(rep.cantidad)), 0) || 0;
-
   return {
     ...orden,
-    sintoma: orden.descripcion, // para UI
+    sintoma: orden.descripcion,
     vehiculoId: orden.vehiculo_id,
-    // Mapear info relacional si viene
     cliente: orden.vehiculos?.clientes,
     vehiculo: orden.vehiculos,
     totalRepuestos,
@@ -51,28 +45,26 @@ export function useOrdenes(vehiculoId) {
   return useQuery({
     queryKey: ORDENES_KEYS.list({ vehiculoId }),
     queryFn: async () => {
+      if (!isOnline()) {
+        let cached;
+        if (vehiculoId) {
+          cached = await getCachedByIndex('ordenes_trabajo', 'vehiculo_id', vehiculoId);
+        } else {
+          cached = await getCachedData('ordenes_trabajo');
+        }
+        return cached.map(mapOrdenFromDB);
+      }
+
       try {
         let query = supabase
           .from('ordenes_trabajo')
           .select(`
             *,
             vehiculos (
-              id,
-              patente,
-              marca,
-              modelo,
-              anio,
-              clientes (
-                id,
-                nombre,
-                apellido,
-                telefono
-              )
+              id, patente, marca, modelo, anio,
+              clientes ( id, nombre, apellido, telefono )
             ),
-            repuestos (
-              costo,
-              cantidad
-            )
+            repuestos ( costo, cantidad )
           `)
           .order('created_at', { ascending: false });
 
@@ -82,20 +74,16 @@ export function useOrdenes(vehiculoId) {
 
         const { data, error } = await query;
         if (error) throw error;
-        
-        // Cache para offline
         await cacheData('ordenes_trabajo', data);
         return data.map(mapOrdenFromDB);
       } catch (err) {
-        if (!isOnline()) {
-          let cached;
-          if (vehiculoId) {
-            cached = await getCachedByIndex('ordenes_trabajo', 'vehiculo_id', vehiculoId);
-          } else {
-            cached = await getCachedData('ordenes_trabajo');
-          }
-          if (cached.length > 0) return cached.map(mapOrdenFromDB);
+        let cached;
+        if (vehiculoId) {
+          cached = await getCachedByIndex('ordenes_trabajo', 'vehiculo_id', vehiculoId);
+        } else {
+          cached = await getCachedData('ordenes_trabajo');
         }
+        if (cached && cached.length > 0) return cached.map(mapOrdenFromDB);
         throw err;
       }
     },
@@ -107,40 +95,31 @@ export function useOrden(id) {
     queryKey: ORDENES_KEYS.detail(id),
     queryFn: async () => {
       if (!id) return null;
+      if (!isOnline()) {
+        const cached = await getCachedById('ordenes_trabajo', id);
+        return cached ? mapOrdenFromDB(cached) : null;
+      }
       try {
         const { data, error } = await supabase
           .from('ordenes_trabajo')
           .select(`
             *,
             vehiculos (
-              id,
-              patente,
-              marca,
-              modelo,
-              anio,
-              clientes (
-                id,
-                nombre,
-                apellido,
-                telefono
-              )
+              id, patente, marca, modelo, anio,
+              clientes ( id, nombre, apellido, telefono )
             ),
-            repuestos (
-              costo,
-              cantidad
-            )
+            repuestos ( costo, cantidad )
           `)
           .eq('id', id)
-          .single();
+          .maybeSingle();
 
         if (error) throw error;
+        if (!data) return null;
         await cacheOne('ordenes_trabajo', data);
         return mapOrdenFromDB(data);
       } catch (err) {
-        if (!isOnline()) {
-          const cached = await getCachedById('ordenes_trabajo', id);
-          if (cached) return mapOrdenFromDB(cached);
-        }
+        const cached = await getCachedById('ordenes_trabajo', id);
+        if (cached) return mapOrdenFromDB(cached);
         throw err;
       }
     },
@@ -155,13 +134,43 @@ export function useCreateOrden() {
       const dbOrden = mapOrdenToDB(nuevaOrden);
 
       if (!isOnline()) {
-        const tempId = crypto.randomUUID();
-        const ordenConId = { ...dbOrden, id: tempId, created_at: new Date().toISOString(), estado: dbOrden.estado || 'Pendiente' };
+        const tempId = generateId();
+        
+        // Hidratar relaciones para la lista offline
+        let vehiculoData = null;
+        if (dbOrden.vehiculo_id) {
+          const vehiculo = await getCachedById('vehiculos', dbOrden.vehiculo_id);
+          if (vehiculo) {
+            const cliente = await getCachedById('clientes', vehiculo.cliente_id);
+            vehiculoData = {
+              id: vehiculo.id,
+              patente: vehiculo.patente,
+              marca: vehiculo.marca,
+              modelo: vehiculo.modelo,
+              anio: vehiculo.anio,
+              clientes: cliente ? {
+                id: cliente.id,
+                nombre: cliente.nombre,
+                apellido: cliente.apellido,
+                telefono: cliente.telefono
+              } : null
+            };
+          }
+        }
+
+        const ordenConId = { 
+          ...dbOrden, 
+          id: tempId, 
+          created_at: new Date().toISOString(), 
+          estado: dbOrden.estado || 'Pendiente',
+          vehiculos: vehiculoData // Anidado para mapOrdenFromDB
+        };
+        
         await cacheOne('ordenes_trabajo', ordenConId);
-        await addPendingSync('ordenes_trabajo', 'insert', dbOrden);
+        await addPendingSync('ordenes_trabajo', 'insert', { ...dbOrden, id: tempId });
         useAppStore.getState().setPendingSyncCount(await getPendingCount());
         toast.info('Sin conexión — Orden guardada localmente');
-        return ordenConId;
+        return ordenConId; // mapOrdenFromDB expects full nested object
       }
 
       const { data, error } = await supabase
@@ -175,6 +184,9 @@ export function useCreateOrden() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ORDENES_KEYS.all });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['historial'] });
+      queryClient.invalidateQueries({ queryKey: ['economia'] });
     },
   });
 }
@@ -184,8 +196,17 @@ export function useUpdateOrden() {
   return useMutation({
     mutationFn: async ({ id, ...updates }) => {
       const dbUpdates = mapOrdenToDB({ ...updates, vehiculoId: updates.vehiculoId || undefined });
-      // Limpiar undefined
       Object.keys(dbUpdates).forEach(key => dbUpdates[key] === undefined && delete dbUpdates[key]);
+
+      if (!isOnline()) {
+        const cached = await getCachedById('ordenes_trabajo', id);
+        const updated = { ...(cached || {}), ...dbUpdates, id };
+        await cacheOne('ordenes_trabajo', updated);
+        await addPendingSync('ordenes_trabajo', 'update', { id, ...dbUpdates });
+        useAppStore.getState().setPendingSyncCount(await getPendingCount());
+        toast.info('Sin conexión — Cambios guardados localmente');
+        return updated;
+      }
 
       const { data, error } = await supabase
         .from('ordenes_trabajo')
@@ -199,6 +220,52 @@ export function useUpdateOrden() {
     onSuccess: (data, variables) => {
       queryClient.invalidateQueries({ queryKey: ORDENES_KEYS.all });
       queryClient.invalidateQueries({ queryKey: ORDENES_KEYS.detail(variables.id) });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['historial'] });
+      queryClient.invalidateQueries({ queryKey: ['economia'] });
+    },
+  });
+}
+
+export function useDeleteOrden() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (id) => {
+      if (!isOnline()) {
+        await offlineCascadeDelete('ordenes_trabajo', id);
+
+        await addPendingSync('ordenes_trabajo', 'delete', { id });
+        useAppStore.getState().setPendingSyncCount(await getPendingCount());
+        toast.info('Sin conexión — Eliminación de orden pendiente de sincronizar');
+        return id;
+      }
+
+      // Eliminar deudas y pagos asociados a la orden
+      await supabase.from('deudas').delete().eq('orden_id', id);
+      await supabase.from('pagos').delete().eq('orden_id', id);
+
+      // Eliminar dependencias
+      await supabase.from('tareas_orden').delete().eq('orden_id', id);
+      await supabase.from('repuestos').delete().eq('orden_id', id);
+      // Los archivos almacenados en Storage no se borran automáticamente, pero sí el registro
+      await supabase.from('archivos').delete().eq('orden_id', id);
+
+      // Finalmente eliminar la orden
+      const { error } = await supabase
+        .from('ordenes_trabajo')
+        .delete()
+        .eq('id', id);
+      if (error) throw error;
+      await removeCached('ordenes_trabajo', id);
+      return id;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ORDENES_KEYS.all });
+      queryClient.invalidateQueries({ queryKey: ['deudas'] });
+      queryClient.invalidateQueries({ queryKey: ['pagos'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['historial'] });
+      queryClient.invalidateQueries({ queryKey: ['economia'] });
     },
   });
 }
@@ -210,6 +277,10 @@ export function useRepuestos(ordenId) {
     queryKey: ORDENES_KEYS.repuestos(ordenId),
     queryFn: async () => {
       if (!ordenId) return [];
+      if (!isOnline()) {
+        const cached = await getCachedByIndex('repuestos', 'orden_id', ordenId);
+        return cached || [];
+      }
       try {
         const { data, error } = await supabase
           .from('repuestos')
@@ -220,10 +291,8 @@ export function useRepuestos(ordenId) {
         await cacheData('repuestos', data);
         return data;
       } catch (err) {
-        if (!isOnline()) {
-          const cached = await getCachedByIndex('repuestos', 'orden_id', ordenId);
-          if (cached.length > 0) return cached;
-        }
+        const cached = await getCachedByIndex('repuestos', 'orden_id', ordenId);
+        if (cached && cached.length > 0) return cached;
         throw err;
       }
     },
@@ -243,10 +312,10 @@ export function useAddRepuesto() {
       };
 
       if (!isOnline()) {
-        const tempId = crypto.randomUUID();
+        const tempId = generateId();
         const repConId = { ...payload, id: tempId, created_at: new Date().toISOString() };
         await cacheOne('repuestos', repConId);
-        await addPendingSync('repuestos', 'insert', payload);
+        await addPendingSync('repuestos', 'insert', { ...payload, id: tempId });
         useAppStore.getState().setPendingSyncCount(await getPendingCount());
         toast.info('Sin conexión — Repuesto guardado localmente');
         return repConId;
@@ -270,7 +339,15 @@ export function useAddRepuesto() {
 export function useDeleteRepuesto() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (id) => {
+    mutationFn: async ({ id, ordenId }) => {
+      if (!isOnline()) {
+        await removeCached('repuestos', id);
+        await addPendingSync('repuestos', 'delete', { id });
+        useAppStore.getState().setPendingSyncCount(await getPendingCount());
+        toast.info('Sin conexión — Eliminación pendiente de sincronizar');
+        return { orden_id: ordenId };
+      }
+
       const { error, data } = await supabase
         .from('repuestos')
         .delete()
@@ -278,6 +355,7 @@ export function useDeleteRepuesto() {
         .select('orden_id')
         .single();
       if (error) throw error;
+      await removeCached('repuestos', id);
       return data;
     },
     onSuccess: (data) => {
@@ -295,13 +373,24 @@ export function useTareas(ordenId) {
     queryKey: ORDENES_KEYS.tareas(ordenId),
     queryFn: async () => {
       if (!ordenId) return [];
-      const { data, error } = await supabase
-        .from('tareas_orden')
-        .select('*')
-        .eq('orden_id', ordenId)
-        .order('created_at', { ascending: true });
-      if (error) throw error;
-      return data;
+      if (!isOnline()) {
+        const cached = await getCachedByIndex('tareas_orden', 'orden_id', ordenId);
+        return cached || [];
+      }
+      try {
+        const { data, error } = await supabase
+          .from('tareas_orden')
+          .select('*')
+          .eq('orden_id', ordenId)
+          .order('created_at', { ascending: true });
+        if (error) throw error;
+        await cacheData('tareas_orden', data);
+        return data;
+      } catch (err) {
+        const cached = await getCachedByIndex('tareas_orden', 'orden_id', ordenId);
+        if (cached && cached.length > 0) return cached;
+        throw err;
+      }
     },
     enabled: !!ordenId,
   });
@@ -311,13 +400,25 @@ export function useAddTarea() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (nuevaTarea) => {
+      const payload = {
+        orden_id: nuevaTarea.ordenId,
+        descripcion: nuevaTarea.descripcion,
+        estado: nuevaTarea.estado || 'Pendiente'
+      };
+
+      if (!isOnline()) {
+        const tempId = generateId();
+        const tareaConId = { ...payload, id: tempId, created_at: new Date().toISOString() };
+        await cacheOne('tareas_orden', tareaConId);
+        await addPendingSync('tareas_orden', 'insert', { ...payload, id: tempId });
+        useAppStore.getState().setPendingSyncCount(await getPendingCount());
+        toast.info('Sin conexión — Tarea guardada localmente');
+        return tareaConId;
+      }
+
       const { data, error } = await supabase
         .from('tareas_orden')
-        .insert([{
-          orden_id: nuevaTarea.ordenId,
-          descripcion: nuevaTarea.descripcion,
-          estado: nuevaTarea.estado || 'Pendiente'
-        }])
+        .insert([payload])
         .select()
         .single();
       if (error) throw error;
@@ -332,7 +433,18 @@ export function useAddTarea() {
 export function useUpdateTarea() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, estado }) => {
+    mutationFn: async ({ id, estado, ordenId }) => {
+      if (!isOnline()) {
+        const tarea = await getCachedById('tareas_orden', id);
+        if (tarea) {
+          await cacheOne('tareas_orden', { ...tarea, estado });
+        }
+        await addPendingSync('tareas_orden', 'update', { id, estado });
+        useAppStore.getState().setPendingSyncCount(await getPendingCount());
+        toast.info('Sin conexión — Cambio guardado localmente');
+        return { id, orden_id: ordenId, estado };
+      }
+
       const { data, error } = await supabase
         .from('tareas_orden')
         .update({ estado })
@@ -340,6 +452,36 @@ export function useUpdateTarea() {
         .select()
         .single();
       if (error) throw error;
+      return data;
+    },
+    onSuccess: (data) => {
+      if (data && data.orden_id) {
+        queryClient.invalidateQueries({ queryKey: ORDENES_KEYS.tareas(data.orden_id) });
+      }
+    },
+  });
+}
+
+export function useDeleteTarea() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, ordenId }) => {
+      if (!isOnline()) {
+        await removeCached('tareas_orden', id);
+        await addPendingSync('tareas_orden', 'delete', { id });
+        useAppStore.getState().setPendingSyncCount(await getPendingCount());
+        toast.info('Sin conexión — Eliminación pendiente de sincronizar');
+        return { orden_id: ordenId };
+      }
+
+      const { error, data } = await supabase
+        .from('tareas_orden')
+        .delete()
+        .eq('id', id)
+        .select('orden_id')
+        .single();
+      if (error) throw error;
+      await removeCached('tareas_orden', id);
       return data;
     },
     onSuccess: (data) => {
