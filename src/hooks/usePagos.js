@@ -10,6 +10,10 @@ export function usePagos(clienteId) {
   return useQuery({
     queryKey: ['pagos', clienteId],
     queryFn: async () => {
+      if (!isOnline()) {
+        const cached = await getCachedByIndex('pagos', 'cliente_id', clienteId);
+        return cached || [];
+      }
       try {
         const { data, error } = await supabase
           .from('pagos')
@@ -21,10 +25,6 @@ export function usePagos(clienteId) {
         await cacheData('pagos', data);
         return data;
       } catch (err) {
-        if (!isOnline()) {
-          const cached = await getCachedByIndex('pagos', 'cliente_id', clienteId);
-          if (cached.length > 0) return cached;
-        }
         throw err;
       }
     },
@@ -80,7 +80,7 @@ export function useCreatePago() {
         };
         
         await cacheOne('pagos', pagoConId);
-        await addPendingSync('pagos', 'insert', payload);
+        await addPendingSync('pagos', 'insert', { ...payload, id: tempId });
         useAppStore.getState().setPendingSyncCount(await getPendingCount());
         toast.info('Sin conexión — Pago guardado localmente');
         return pagoConId;

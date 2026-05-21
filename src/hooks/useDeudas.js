@@ -16,6 +16,10 @@ export function useDeudas(clienteId) {
   return useQuery({
     queryKey: DEUDAS_KEYS.cliente(clienteId),
     queryFn: async () => {
+      if (!isOnline()) {
+        const cached = await getCachedByIndex('deudas', 'cliente_id', clienteId);
+        return cached || [];
+      }
       try {
         const { data, error } = await supabase
           .from('deudas')
@@ -26,10 +30,6 @@ export function useDeudas(clienteId) {
         await cacheData('deudas', data);
         return data;
       } catch (err) {
-        if (!isOnline()) {
-          const cached = await getCachedByIndex('deudas', 'cliente_id', clienteId);
-          if (cached.length > 0) return cached;
-        }
         throw err;
       }
     },
@@ -42,6 +42,10 @@ export function useDeudasPendientes(clienteId) {
   return useQuery({
     queryKey: [...DEUDAS_KEYS.cliente(clienteId), 'pendientes'],
     queryFn: async () => {
+      if (!isOnline()) {
+        const cached = await getCachedByIndex('deudas', 'cliente_id', clienteId);
+        return cached.filter(d => d.estado === 'pendiente' || d.estado === 'parcial') || [];
+      }
       try {
         const { data, error } = await supabase
           .from('deudas')
@@ -52,10 +56,6 @@ export function useDeudasPendientes(clienteId) {
         if (error) throw error;
         return data;
       } catch (err) {
-        if (!isOnline()) {
-          const cached = await getCachedByIndex('deudas', 'cliente_id', clienteId);
-          return cached.filter(d => d.estado === 'pendiente' || d.estado === 'parcial');
-        }
         throw err;
       }
     },
@@ -68,6 +68,10 @@ export function useDeudasOrden(ordenId) {
   return useQuery({
     queryKey: DEUDAS_KEYS.orden(ordenId),
     queryFn: async () => {
+      if (!isOnline()) {
+        const cached = await getCachedByIndex('deudas', 'orden_id', ordenId);
+        return cached || [];
+      }
       try {
         const { data, error } = await supabase
           .from('deudas')
@@ -78,10 +82,6 @@ export function useDeudasOrden(ordenId) {
         await cacheData('deudas', data);
         return data;
       } catch (err) {
-        if (!isOnline()) {
-          const cached = await getCachedByIndex('deudas', 'orden_id', ordenId);
-          if (cached.length > 0) return cached;
-        }
         throw err;
       }
     },
@@ -94,6 +94,10 @@ export function useDeudasVehiculo(vehiculoId) {
   return useQuery({
     queryKey: ['deudas', 'vehiculo', vehiculoId],
     queryFn: async () => {
+      if (!isOnline()) {
+        const cached = await getCachedData('deudas');
+        return cached || [];
+      }
       try {
         const { data: ordenes } = await supabase
           .from('ordenes_trabajo')
@@ -110,11 +114,6 @@ export function useDeudasVehiculo(vehiculoId) {
         await cacheData('deudas', data);
         return data;
       } catch (err) {
-        if (!isOnline()) {
-          // Fallback: get all cached deudas (can't filter by vehicle offline easily)
-          const cached = await getCachedData('deudas');
-          return cached;
-        }
         throw err;
       }
     },
@@ -171,7 +170,7 @@ export function useCreateDeuda() {
           ordenes_trabajo: ordenData
         };
         await cacheOne('deudas', offlineData);
-        await addPendingSync('deudas', 'insert', payload);
+        await addPendingSync('deudas', 'insert', { ...payload, id: offlineId });
         const count = await getPendingCount();
         useAppStore.getState().setPendingSyncCount(count);
         return offlineData;

@@ -45,6 +45,16 @@ export function useOrdenes(vehiculoId) {
   return useQuery({
     queryKey: ORDENES_KEYS.list({ vehiculoId }),
     queryFn: async () => {
+      if (!isOnline()) {
+        let cached;
+        if (vehiculoId) {
+          cached = await getCachedByIndex('ordenes_trabajo', 'vehiculo_id', vehiculoId);
+        } else {
+          cached = await getCachedData('ordenes_trabajo');
+        }
+        return cached.map(mapOrdenFromDB);
+      }
+
       try {
         let query = supabase
           .from('ordenes_trabajo')
@@ -67,15 +77,6 @@ export function useOrdenes(vehiculoId) {
         await cacheData('ordenes_trabajo', data);
         return data.map(mapOrdenFromDB);
       } catch (err) {
-        if (!isOnline()) {
-          let cached;
-          if (vehiculoId) {
-            cached = await getCachedByIndex('ordenes_trabajo', 'vehiculo_id', vehiculoId);
-          } else {
-            cached = await getCachedData('ordenes_trabajo');
-          }
-          if (cached.length > 0) return cached.map(mapOrdenFromDB);
-        }
         throw err;
       }
     },
@@ -87,6 +88,10 @@ export function useOrden(id) {
     queryKey: ORDENES_KEYS.detail(id),
     queryFn: async () => {
       if (!id) return null;
+      if (!isOnline()) {
+        const cached = await getCachedById('ordenes_trabajo', id);
+        return cached ? mapOrdenFromDB(cached) : null;
+      }
       try {
         const { data, error } = await supabase
           .from('ordenes_trabajo')
@@ -105,10 +110,6 @@ export function useOrden(id) {
         await cacheOne('ordenes_trabajo', data);
         return mapOrdenFromDB(data);
       } catch (err) {
-        if (!isOnline()) {
-          const cached = await getCachedById('ordenes_trabajo', id);
-          if (cached) return mapOrdenFromDB(cached);
-        }
         throw err;
       }
     },
@@ -156,7 +157,7 @@ export function useCreateOrden() {
         };
         
         await cacheOne('ordenes_trabajo', ordenConId);
-        await addPendingSync('ordenes_trabajo', 'insert', dbOrden);
+        await addPendingSync('ordenes_trabajo', 'insert', { ...dbOrden, id: tempId });
         useAppStore.getState().setPendingSyncCount(await getPendingCount());
         toast.info('Sin conexión — Orden guardada localmente');
         return ordenConId; // mapOrdenFromDB expects full nested object
@@ -217,6 +218,10 @@ export function useRepuestos(ordenId) {
     queryKey: ORDENES_KEYS.repuestos(ordenId),
     queryFn: async () => {
       if (!ordenId) return [];
+      if (!isOnline()) {
+        const cached = await getCachedByIndex('repuestos', 'orden_id', ordenId);
+        return cached || [];
+      }
       try {
         const { data, error } = await supabase
           .from('repuestos')
@@ -227,10 +232,6 @@ export function useRepuestos(ordenId) {
         await cacheData('repuestos', data);
         return data;
       } catch (err) {
-        if (!isOnline()) {
-          const cached = await getCachedByIndex('repuestos', 'orden_id', ordenId);
-          if (cached.length > 0) return cached;
-        }
         throw err;
       }
     },
@@ -250,10 +251,10 @@ export function useAddRepuesto() {
       };
 
       if (!isOnline()) {
-        const tempId = crypto.randomUUID();
+        const tempId = generateId();
         const repConId = { ...payload, id: tempId, created_at: new Date().toISOString() };
         await cacheOne('repuestos', repConId);
-        await addPendingSync('repuestos', 'insert', payload);
+        await addPendingSync('repuestos', 'insert', { ...payload, id: tempId });
         useAppStore.getState().setPendingSyncCount(await getPendingCount());
         toast.info('Sin conexión — Repuesto guardado localmente');
         return repConId;
@@ -311,6 +312,10 @@ export function useTareas(ordenId) {
     queryKey: ORDENES_KEYS.tareas(ordenId),
     queryFn: async () => {
       if (!ordenId) return [];
+      if (!isOnline()) {
+        const cached = await getCachedByIndex('tareas_orden', 'orden_id', ordenId);
+        return cached || [];
+      }
       try {
         const { data, error } = await supabase
           .from('tareas_orden')
@@ -318,12 +323,9 @@ export function useTareas(ordenId) {
           .eq('orden_id', ordenId)
           .order('created_at', { ascending: true });
         if (error) throw error;
+        await cacheData('tareas_orden', data);
         return data;
       } catch (err) {
-        if (!isOnline()) {
-          // tareas_orden no está en IndexedDB, devolver vacío offline
-          return [];
-        }
         throw err;
       }
     },
@@ -335,19 +337,25 @@ export function useAddTarea() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (nuevaTarea) => {
+      const payload = {
+        orden_id: nuevaTarea.ordenId,
+        descripcion: nuevaTarea.descripcion,
+        estado: nuevaTarea.estado || 'Pendiente'
+      };
+
       if (!isOnline()) {
-        toast.warning('Sin conexión — Las tareas se sincronizan al reconectar');
-        const tempId = crypto.randomUUID();
-        return { id: tempId, orden_id: nuevaTarea.ordenId, descripcion: nuevaTarea.descripcion, estado: nuevaTarea.estado || 'Pendiente', created_at: new Date().toISOString() };
+        const tempId = generateId();
+        const tareaConId = { ...payload, id: tempId, created_at: new Date().toISOString() };
+        await cacheOne('tareas_orden', tareaConId);
+        await addPendingSync('tareas_orden', 'insert', { ...payload, id: tempId });
+        useAppStore.getState().setPendingSyncCount(await getPendingCount());
+        toast.info('Sin conexión — Tarea guardada localmente');
+        return tareaConId;
       }
 
       const { data, error } = await supabase
         .from('tareas_orden')
-        .insert([{
-          orden_id: nuevaTarea.ordenId,
-          descripcion: nuevaTarea.descripcion,
-          estado: nuevaTarea.estado || 'Pendiente'
-        }])
+        .insert([payload])
         .select()
         .single();
       if (error) throw error;

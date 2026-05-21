@@ -6,6 +6,36 @@ export function useDashboard() {
   return useQuery({
     queryKey: ['dashboard', 'stats'],
     queryFn: async () => {
+      if (!isOnline()) {
+        const [clientes, ordenes, deudas, pagos] = await Promise.all([
+          getCachedData('clientes'),
+          getCachedData('ordenes_trabajo'),
+          getCachedData('deudas'),
+          getCachedData('pagos'),
+        ]);
+
+        const ordenesAbiertas = ordenes.filter(o => o.estado !== 'Terminado' && o.estado !== 'Entregado');
+        const vehiculosUnicos = new Set(ordenesAbiertas.map(o => o.vehiculo_id));
+        const deudasPend = deudas.filter(d => d.estado === 'pendiente' || d.estado === 'parcial');
+        const deudaTotal = deudasPend.reduce((s, d) => s + (Number(d.monto_total || 0) - Number(d.monto_pagado || 0)), 0);
+
+        const now = new Date();
+        const mesInicio = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+        const pagosMes = pagos.filter(p => p.fecha >= mesInicio);
+        const ingresoMesBruto = pagosMes.reduce((s, p) => s + Number(p.monto || 0), 0);
+
+        return {
+          ordenesActivas: ordenesAbiertas.length,
+          vehiculosEnTaller: vehiculosUnicos.size,
+          totalClientes: clientes.length,
+          ultimasOrdenes: ordenes.sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, 5),
+          ordenesEspera: ordenes.filter(o => o.estado === 'Esperando repuesto'),
+          deudaTotal,
+          ingresoMesBruto,
+          ingresoMesNeto: ingresoMesBruto,
+        };
+      }
+
       try {
         const now = new Date();
         const mesInicio = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
@@ -75,36 +105,6 @@ export function useDashboard() {
           ingresoMesNeto: ingresoMesBruto - costoRepuestosMes,
         };
       } catch (err) {
-        // Fallback offline: construir stats desde IndexedDB
-        if (!isOnline()) {
-          const [clientes, ordenes, deudas, pagos] = await Promise.all([
-            getCachedData('clientes'),
-            getCachedData('ordenes_trabajo'),
-            getCachedData('deudas'),
-            getCachedData('pagos'),
-          ]);
-
-          const ordenesAbiertas = ordenes.filter(o => o.estado !== 'Terminado' && o.estado !== 'Entregado');
-          const vehiculosUnicos = new Set(ordenesAbiertas.map(o => o.vehiculo_id));
-          const deudasPend = deudas.filter(d => d.estado === 'pendiente' || d.estado === 'parcial');
-          const deudaTotal = deudasPend.reduce((s, d) => s + (Number(d.monto_total || 0) - Number(d.monto_pagado || 0)), 0);
-
-          const now = new Date();
-          const mesInicio = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
-          const pagosMes = pagos.filter(p => p.fecha >= mesInicio);
-          const ingresoMesBruto = pagosMes.reduce((s, p) => s + Number(p.monto || 0), 0);
-
-          return {
-            ordenesActivas: ordenesAbiertas.length,
-            vehiculosEnTaller: vehiculosUnicos.size,
-            totalClientes: clientes.length,
-            ultimasOrdenes: ordenes.sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, 5),
-            ordenesEspera: ordenes.filter(o => o.estado === 'Esperando repuesto'),
-            deudaTotal,
-            ingresoMesBruto,
-            ingresoMesNeto: ingresoMesBruto,
-          };
-        }
         throw err;
       }
     },

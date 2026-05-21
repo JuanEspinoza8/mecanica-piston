@@ -38,6 +38,15 @@ export function useVehiculos(clienteId = null) {
   return useQuery({
     queryKey: clienteId ? VEHICULOS_KEYS.list(clienteId) : VEHICULOS_KEYS.all,
     queryFn: async () => {
+      if (!isOnline()) {
+        let cached;
+        if (clienteId) {
+          cached = await getCachedByIndex('vehiculos', 'cliente_id', clienteId);
+        } else {
+          cached = await getCachedData('vehiculos');
+        }
+        return cached.map(mapFromDB);
+      }
       try {
         let query = supabase
           .from('vehiculos')
@@ -63,15 +72,6 @@ export function useVehiculos(clienteId = null) {
         await cacheData('vehiculos', data);
         return data.map(mapFromDB);
       } catch (err) {
-        if (!isOnline()) {
-          let cached;
-          if (clienteId) {
-            cached = await getCachedByIndex('vehiculos', 'cliente_id', clienteId);
-          } else {
-            cached = await getCachedData('vehiculos');
-          }
-          if (cached.length > 0) return cached.map(mapFromDB);
-        }
         throw err;
       }
     },
@@ -83,6 +83,11 @@ export function useVehiculo(id) {
   return useQuery({
     queryKey: VEHICULOS_KEYS.detail(id),
     queryFn: async () => {
+      if (!id) return null;
+      if (!isOnline()) {
+        const cached = await getCachedById('vehiculos', id);
+        return cached ? mapFromDB(cached) : null;
+      }
       try {
         const { data, error } = await supabase
           .from('vehiculos')
@@ -104,10 +109,6 @@ export function useVehiculo(id) {
         await cacheOne('vehiculos', data);
         return mapFromDB(data);
       } catch (err) {
-        if (!isOnline()) {
-          const cached = await getCachedById('vehiculos', id);
-          if (cached) return mapFromDB(cached);
-        }
         throw err;
       }
     },
@@ -146,7 +147,7 @@ export function useCreateVehiculo() {
         };
         
         await cacheOne('vehiculos', vehiculoConId);
-        await addPendingSync('vehiculos', 'insert', dbVehiculo);
+        await addPendingSync('vehiculos', 'insert', { ...dbVehiculo, id: tempId });
         useAppStore.getState().setPendingSyncCount(await getPendingCount());
         toast.info('Sin conexión — Vehículo guardado localmente');
         return mapFromDB(vehiculoConId);

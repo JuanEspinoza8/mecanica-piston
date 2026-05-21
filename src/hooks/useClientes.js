@@ -15,6 +15,10 @@ export function useClientes() {
   return useQuery({
     queryKey: CLIENTES_KEYS.all,
     queryFn: async () => {
+      if (!isOnline()) {
+        const cached = await getCachedData('clientes');
+        return cached || [];
+      }
       try {
         const { data, error } = await supabase
           .from('clientes')
@@ -27,11 +31,6 @@ export function useClientes() {
         await cacheData('clientes', data);
         return data;
       } catch (err) {
-        // Fallback: leer desde cache offline
-        if (!isOnline()) {
-          const cached = await getCachedData('clientes');
-          if (cached.length > 0) return cached;
-        }
         throw err;
       }
     },
@@ -43,6 +42,11 @@ export function useCliente(id) {
   return useQuery({
     queryKey: CLIENTES_KEYS.detail(id),
     queryFn: async () => {
+      if (!id) return null;
+      if (!isOnline()) {
+        const cached = await getCachedById('clientes', id);
+        return cached || null;
+      }
       try {
         const { data, error } = await supabase
           .from('clientes')
@@ -55,10 +59,6 @@ export function useCliente(id) {
         await cacheOne('clientes', data);
         return data;
       } catch (err) {
-        if (!isOnline()) {
-          const cached = await getCachedById('clientes', id);
-          if (cached) return cached;
-        }
         throw err;
       }
     },
@@ -77,7 +77,7 @@ export function useCreateCliente() {
         const tempId = generateId();
         const clienteConId = { ...nuevoCliente, id: tempId, created_at: new Date().toISOString() };
         await cacheOne('clientes', clienteConId);
-        await addPendingSync('clientes', 'insert', nuevoCliente);
+        await addPendingSync('clientes', 'insert', { ...nuevoCliente, id: tempId });
         useAppStore.getState().setPendingSyncCount(await getPendingCount());
         toast.info('Sin conexión — Cliente guardado localmente');
         return clienteConId;
