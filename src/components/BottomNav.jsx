@@ -11,7 +11,7 @@ export default function BottomNav() {
       {isHome && (
         <Link
           to="/ordenes/nueva"
-          className="absolute right-4 -top-7 flex items-center justify-center h-14 w-14 rounded-full bg-gradient-to-tr from-red-600 to-red-700 shadow-[0_4px_15px_rgba(220,38,38,0.5)] text-white transition-transform active:scale-95 border-[3px] border-black z-10 animate-in fade-in zoom-in-50 duration-300"
+          className="absolute right-4 -top-16 flex items-center justify-center h-14 w-14 rounded-full bg-gradient-to-tr from-red-600 to-red-700 shadow-[0_4px_15px_rgba(220,38,38,0.5)] text-white transition-transform active:scale-95 border-[3px] border-black z-10 animate-in fade-in zoom-in-50 duration-300"
         >
           <Plus className="h-7 w-7" />
         </Link>
