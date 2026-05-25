@@ -99,7 +99,7 @@ export function useFileUpload() {
   const queryClient = useQueryClient();
   
   return useMutation({
-    mutationFn: async ({ file, ordenId, tipo }) => {
+    mutationFn: async ({ file, ordenId, tipo, repuestoId }) => {
       if (!isOnline()) {
         toast.error('No se pueden subir archivos sin conexión');
         throw new Error('No se pueden subir archivos sin conexión');
@@ -134,7 +134,8 @@ export function useFileUpload() {
       }
 
       const fileExt = fileToUpload.name.split('.').pop();
-      const fileName = `${ordenId}/${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
+      const prefix = repuestoId ? `rep_${repuestoId}_` : '';
+      const fileName = `${ordenId}/${prefix}${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
 
       const { error: uploadError } = await supabase.storage
         .from('archivos')

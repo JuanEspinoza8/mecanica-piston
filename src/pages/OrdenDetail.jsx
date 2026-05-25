@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { ArrowLeft, CarFront, User, Calendar, Wrench, Settings, PackageOpen, Plus, Camera, Trash2, FileText, CheckCircle2, Circle, Loader, PauseCircle, X, Save, Loader2, UploadCloud, DollarSign } from 'lucide-react';
 import { format } from 'date-fns';
@@ -12,7 +12,7 @@ import PagoForm from '../components/PagoForm';
 import ConfirmModal from '../components/ConfirmModal';
 
 import { useOrden, useUpdateOrden, useRepuestos, useDeleteRepuesto, useTareas, useAddTarea, useUpdateTarea, useDeleteTarea, useDeleteOrden } from '../hooks/useOrdenes';
-import { useArchivos, useFileUpload } from '../hooks/useArchivos';
+import { useArchivos, useFileUpload, useDeleteArchivo } from '../hooks/useArchivos';
 import { useDeudasOrden, useDeleteDeuda } from '../hooks/useDeudas';
 
 export default function OrdenDetail() {
@@ -35,6 +35,16 @@ export default function OrdenDetail() {
   const { mutateAsync: updateTarea } = useUpdateTarea();
   const { mutateAsync: deleteTarea } = useDeleteTarea();
   const { mutateAsync: uploadFile, isPending: isUploading } = useFileUpload();
+  const { mutateAsync: deleteArchivo } = useDeleteArchivo();
+
+  // Ref para auto-scroll de repuestos
+  const repuestosEndRef = useRef(null);
+
+  useEffect(() => {
+    if (repuestosEndRef.current) {
+      repuestosEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [repuestos.length]);
 
   // Estados interactivos
   const [isRepuestoModalOpen, setIsRepuestoModalOpen] = useState(false);
@@ -88,6 +98,10 @@ export default function OrdenDetail() {
   const handleRemoveRepuesto = async (idToRemove) => {
     if (window.confirm("¿Seguro que deseas eliminar este repuesto?")) {
       try {
+        const archivosAsociados = archivos.filter(a => a.ruta_storage.includes(`rep_${idToRemove}_`));
+        for (const arch of archivosAsociados) {
+          await deleteArchivo(arch);
+        }
         await deleteRepuesto({ id: idToRemove, ordenId: orden.id });
         toast.success("Repuesto eliminado");
       } catch (e) {
@@ -576,6 +590,7 @@ export default function OrdenDetail() {
               >
                 <Plus className="w-5 h-5 mr-1" /> Añadir Repuesto
               </button>
+              <div ref={repuestosEndRef} />
             </div>
 
             {/* Total y Mano de Obra */}
@@ -591,11 +606,15 @@ export default function OrdenDetail() {
                 <div className="flex items-center">
                   <span className="text-neutral-400 mr-1">$</span>
                   <input 
-                    type="number"
-                    min="0"
+                    type="text"
+                    inputMode="numeric"
                     placeholder="0"
-                    value={manoDeObra}
-                    onChange={(e) => setManoDeObra(e.target.value)}
+                    value={manoDeObra ? Number(manoDeObra).toLocaleString('es-AR') : ''}
+                    onChange={(e) => {
+                      const raw = e.target.value.replace(/\D/g, '');
+                      setManoDeObra(raw);
+                    }}
+                    onFocus={(e) => e.target.select()}
                     className="w-24 bg-neutral-900 dark:bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-right text-white font-bold focus:outline-none focus:border-red-500 transition-colors appearance-none"
                   />
                 </div>
