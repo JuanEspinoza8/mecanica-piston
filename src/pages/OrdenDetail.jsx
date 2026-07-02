@@ -112,7 +112,7 @@ export default function OrdenDetail() {
 
   // Cálculos de Totales
   const totalRepuestos = repuestos.reduce((sum, item) => sum + (Number(item.costo) * Number(item.cantidad)), 0);
-  const costoManoDeObra = parseFloat(manoDeObra) || 0;
+  const costoManoDeObra = Number(String(manoDeObra).replace(/\./g, '')) || 0;
   const totalEstimado = totalRepuestos + costoManoDeObra;
 
   // Filtrar fotos
@@ -569,10 +569,13 @@ export default function OrdenDetail() {
                   </div>
                 ))
               )}
-              
-              <button 
+            </div>
+
+            {/* Botón fijo para añadir repuesto (fuera del área con scroll) */}
+            <div className="px-5 pb-5 pt-1 border-b border-neutral-100 dark:border-neutral-800">
+              <button
                 onClick={() => setIsRepuestoModalOpen(true)}
-                className="w-full py-3 border-2 border-dashed border-neutral-200 dark:border-neutral-700 rounded-xl text-sm font-bold text-neutral-500 dark:text-neutral-400 hover:text-red-600 dark:hover:text-red-500 hover:border-red-300 dark:hover:border-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-all flex items-center justify-center mt-4"
+                className="w-full py-3 border-2 border-dashed border-neutral-200 dark:border-neutral-700 rounded-xl text-sm font-bold text-neutral-500 dark:text-neutral-400 hover:text-red-600 dark:hover:text-red-500 hover:border-red-300 dark:hover:border-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-all flex items-center justify-center"
               >
                 <Plus className="w-5 h-5 mr-1" /> Añadir Repuesto
               </button>
@@ -590,12 +593,16 @@ export default function OrdenDetail() {
                 <span className="text-neutral-400">Mano de Obra</span>
                 <div className="flex items-center">
                   <span className="text-neutral-400 mr-1">$</span>
-                  <input 
-                    type="number"
-                    min="0"
+                  <input
+                    type="text"
+                    inputMode="numeric"
                     placeholder="0"
                     value={manoDeObra}
-                    onChange={(e) => setManoDeObra(e.target.value)}
+                    onChange={(e) => {
+                      const raw = e.target.value.replace(/\D/g, '');
+                      setManoDeObra(raw ? parseInt(raw, 10).toLocaleString('es-AR') : '');
+                    }}
+                    onFocus={(e) => e.target.select()}
                     className="w-24 bg-neutral-900 dark:bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-right text-white font-bold focus:outline-none focus:border-red-500 transition-colors appearance-none"
                   />
                 </div>

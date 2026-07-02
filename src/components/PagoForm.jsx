@@ -11,7 +11,7 @@ export default function PagoForm({ clienteId, ordenId, onSuccess, onCancel, pres
   const { data: deudasPendientes = [] } = useDeudasPendientes(clienteId);
   const createPagoMutation = useCreatePago();
 
-  const { register, handleSubmit, watch, setValue, formState: { errors } } = useReactHookForm({
+  const { register, handleSubmit, watch, setValue, setError, formState: { errors } } = useReactHookForm({
     resolver: zodResolver(pagoSchema),
     defaultValues: {
       deuda_id: preselectedDeudaId || '',
@@ -62,6 +62,14 @@ export default function PagoForm({ clienteId, ordenId, onSuccess, onCancel, pres
     ? Number(deudaSeleccionada.monto_total) - Number(deudaSeleccionada.monto_pagado)
     : 0;
 
+  // Monto ingresado como número (el input usa separadores de miles)
+  const montoNum = typeof montoInput === 'string'
+    ? Number(montoInput.replace(/\./g, '').replace(',', '.'))
+    : Number(montoInput);
+
+  // El pago no puede superar el saldo pendiente de la deuda seleccionada
+  const excedeSaldo = !!deudaSeleccionada && !isNaN(montoNum) && montoNum > saldoPendiente;
+
   const handleMontoChange = (e) => {
     let rawValue = e.target.value.replace(/\D/g, '');
     if (rawValue) {
@@ -76,6 +84,14 @@ export default function PagoForm({ clienteId, ordenId, onSuccess, onCancel, pres
   };
 
   const onSubmit = async (data) => {
+    // Impedir que el pago supere el saldo pendiente de la deuda
+    if (deudaSeleccionada && data.monto > saldoPendiente) {
+      setError('monto', {
+        type: 'manual',
+        message: `El monto no puede superar el saldo pendiente ($${saldoPendiente.toLocaleString('es-AR')})`,
+      });
+      return;
+    }
     try {
       await createPagoMutation.mutateAsync({
         ...data,
@@ -180,6 +196,11 @@ export default function PagoForm({ clienteId, ordenId, onSuccess, onCancel, pres
             />
           </div>
           {errors.monto && <p className="mt-1 text-xs font-semibold text-red-500">{errors.monto.message}</p>}
+          {!errors.monto && excedeSaldo && (
+            <p className="mt-1 text-xs font-semibold text-red-500">
+              El monto supera el saldo pendiente (${saldoPendiente.toLocaleString('es-AR')})
+            </p>
+          )}
         </div>
 
         {/* Tracking de cuotas */}
@@ -289,8 +310,8 @@ export default function PagoForm({ clienteId, ordenId, onSuccess, onCancel, pres
           )}
           <button
             type="submit"
-            disabled={createPagoMutation.isPending}
-            className="flex-1 px-4 py-3 rounded-xl bg-green-600 hover:bg-green-700 text-white font-bold transition-colors flex items-center justify-center disabled:opacity-50 shadow-lg shadow-green-600/20"
+            disabled={createPagoMutation.isPending || excedeSaldo}
+            className="flex-1 px-4 py-3 rounded-xl bg-green-600 hover:bg-green-700 text-white font-bold transition-colors flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-green-600/20"
           >
             {createPagoMutation.isPending ? (
               <span className="flex items-center"><div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div> Guardando...</span>

@@ -7,7 +7,13 @@ import { X, PackageOpen, DollarSign, FileUp, Hash, Loader2 } from 'lucide-react'
 const repuestoSchema = z.object({
   nombre: z.string().min(3, "El nombre debe tener al menos 3 caracteres"),
   cantidad: z.number().min(1, "La cantidad mínima es 1"),
-  precio: z.number().min(0, "El precio no puede ser negativo")
+  precio: z.union([z.string(), z.number()])
+    .transform(val => {
+      if (typeof val === 'number') return val;
+      if (!val) return 0;
+      return Number(String(val).replace(/\./g, ''));
+    })
+    .refine(val => !isNaN(val) && val >= 0, "El precio no puede ser negativo")
 });
 
 import { useAddRepuesto } from '../hooks/useOrdenes';
@@ -30,6 +36,16 @@ export default function AddRepuestoModal({ isOpen, onClose, ordenId }) {
   });
 
   if (!isOpen) return null;
+
+  // Formatea el precio con separadores de miles mientras se escribe
+  const handlePrecioChange = (e) => {
+    const raw = e.target.value.replace(/\D/g, '');
+    e.target.value = raw ? parseInt(raw, 10).toLocaleString('es-AR') : '';
+  };
+
+  // Selecciona todo el contenido al enfocar para que el valor por defecto se
+  // reemplace al escribir en vez de estorbar
+  const selectOnFocus = (e) => e.target.select();
 
   const handleFileChange = (e) => {
     const file = e.target.files[0];
@@ -124,6 +140,7 @@ export default function AddRepuestoModal({ isOpen, onClose, ordenId }) {
                 <input
                   type="number"
                   {...register('cantidad', { valueAsNumber: true })}
+                  onFocus={selectOnFocus}
                   className={`block w-full pl-10 pr-3 py-2.5 border ${errors.cantidad ? 'border-red-500 focus:ring-red-500' : 'border-neutral-300 dark:border-neutral-700 focus:ring-black dark:focus:ring-red-500'} rounded-xl focus:outline-none focus:ring-1 transition-colors bg-transparent dark:bg-neutral-950 dark:text-white`}
                   min="1"
                 />
@@ -139,11 +156,12 @@ export default function AddRepuestoModal({ isOpen, onClose, ordenId }) {
                   <DollarSign className="h-5 w-5 text-neutral-400 dark:text-neutral-500" />
                 </div>
                 <input
-                  type="number"
-                  {...register('precio', { valueAsNumber: true })}
+                  type="text"
+                  inputMode="numeric"
+                  {...register('precio', { onChange: handlePrecioChange })}
+                  onFocus={selectOnFocus}
                   className={`block w-full pl-10 pr-3 py-2.5 border ${errors.precio ? 'border-red-500 focus:ring-red-500' : 'border-neutral-300 dark:border-neutral-700 focus:ring-black dark:focus:ring-red-500'} rounded-xl focus:outline-none focus:ring-1 transition-colors bg-transparent dark:bg-neutral-950 dark:text-white`}
-                  placeholder="0.00"
-                  min="0"
+                  placeholder="0"
                 />
               </div>
               {errors.precio && <p className="mt-1 text-sm text-red-600 dark:text-red-400">{errors.precio.message}</p>}
