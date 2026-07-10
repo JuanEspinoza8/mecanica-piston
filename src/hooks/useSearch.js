@@ -1,6 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
+import { cacheData, getCachedData, isOnline } from '../db/offlineService';
+import { matchesSearch } from '../lib/utils';
 
 // Hook interno para implementar debounce (retraso en la búsqueda al escribir)
 function useDebounce(value, delay) {
@@ -20,57 +22,88 @@ function useDebounce(value, delay) {
 }
 
 /**
- * Hook para buscar globalmente clientes y vehículos
+ * Carga clientes y vehículos (online desde Supabase, offline desde caché) una
+ * sola vez y los mantiene cacheados. El filtrado se hace en memoria para poder
+ * ignorar acentos, mayúsculas y espacios, y así funciona también sin conexión.
+ */
+function useSearchSource() {
+  return useQuery({
+    queryKey: ['search-source'],
+    queryFn: async () => {
+      if (!isOnline()) {
+        const [clientes, vehiculos] = await Promise.all([
+          getCachedData('clientes'),
+          getCachedData('vehiculos'),
+        ]);
+        return { clientes: clientes || [], vehiculos: vehiculos || [] };
+      }
+
+      try {
+        const [clientesRes, vehiculosRes] = await Promise.all([
+          supabase.from('clientes').select('*'),
+          supabase.from('vehiculos').select('*, clientes ( id, nombre, apellido )'),
+        ]);
+        if (clientesRes.error) throw clientesRes.error;
+        if (vehiculosRes.error) throw vehiculosRes.error;
+
+        const clientes = clientesRes.data || [];
+        const vehiculos = vehiculosRes.data || [];
+        // Refrescar caché para uso offline
+        await Promise.all([
+          cacheData('clientes', clientes),
+          cacheData('vehiculos', vehiculos),
+        ]);
+        return { clientes, vehiculos };
+      } catch (err) {
+        // Fallback a caché si falla la red
+        const [clientes, vehiculos] = await Promise.all([
+          getCachedData('clientes'),
+          getCachedData('vehiculos'),
+        ]);
+        if ((clientes && clientes.length) || (vehiculos && vehiculos.length)) {
+          return { clientes: clientes || [], vehiculos: vehiculos || [] };
+        }
+        throw err;
+      }
+    },
+    staleTime: 1000 * 60 * 5, // 5 minutos
+  });
+}
+
+/**
+ * Hook para buscar globalmente clientes y vehículos.
+ * Tolerante a acentos, mayúsculas, espacios/puntuación y orden de palabras.
  * @param {string} query - Término de búsqueda
  */
 export function useSearch(query) {
-  // Aplicamos debounce de 300ms a la query
-  const debouncedQuery = useDebounce(query, 300);
+  const debouncedQuery = useDebounce(query, 250);
+  const { data, isLoading, isFetching } = useSearchSource();
 
-  return useQuery({
-    queryKey: ['search', debouncedQuery],
-    queryFn: async () => {
-      // 1. Validar que tenga al menos 2 caracteres
-      if (!debouncedQuery || debouncedQuery.length < 2) {
-        return { clientes: [], vehiculos: [] };
-      }
+  const resultados = useMemo(() => {
+    const q = (debouncedQuery || '').trim();
+    if (q.length < 2) return { clientes: [], vehiculos: [] };
 
-      // Preparar el término para la búsqueda ILIKE (no distingue mayúsculas/minúsculas y busca en cualquier parte de la cadena)
-      const searchTerm = `%${debouncedQuery}%`;
+    const clientes = (data?.clientes || [])
+      .filter(c => matchesSearch(
+        `${c.nombre || ''} ${c.apellido || ''} ${c.telefono || ''} ${c.email || ''}`,
+        q
+      ))
+      .slice(0, 10);
 
-      // 2. Buscar en la tabla de clientes (nombre, apellido, o teléfono)
-      const { data: clientes, error: errorClientes } = await supabase
-        .from('clientes')
-        .select('*')
-        .or(`nombre.ilike.${searchTerm},apellido.ilike.${searchTerm},telefono.ilike.${searchTerm}`)
-        .limit(10); // Limitamos a 10 resultados para no sobrecargar el dropdown
+    const vehiculos = (data?.vehiculos || [])
+      .filter(v => matchesSearch(
+        `${v.marca || ''} ${v.modelo || ''} ${v.patente || ''} ` +
+        `${v.clientes?.nombre || ''} ${v.clientes?.apellido || ''}`,
+        q
+      ))
+      .slice(0, 10);
 
-      if (errorClientes) throw errorClientes;
+    return { clientes, vehiculos };
+  }, [data, debouncedQuery]);
 
-      // 3. Buscar en la tabla de vehículos (patente, marca o modelo)
-      // Hacemos un JOIN implícito para traer también los datos básicos del dueño
-      const { data: vehiculos, error: errorVehiculos } = await supabase
-        .from('vehiculos')
-        .select(`
-          *,
-          clientes (
-            nombre,
-            apellido
-          )
-        `)
-        .or(`patente.ilike.${searchTerm},modelo.ilike.${searchTerm},marca.ilike.${searchTerm}`)
-        .limit(10);
-
-      if (errorVehiculos) throw errorVehiculos;
-
-      // 4. Retornar agrupados
-      return {
-        clientes: clientes || [],
-        vehiculos: vehiculos || []
-      };
-    },
-    // Solo habilitar la query real de red si hay texto suficiente
-    enabled: !!debouncedQuery && debouncedQuery.length >= 2,
-    staleTime: 1000 * 60 * 5, // Cache de 5 minutos para búsquedas iguales
-  });
+  return {
+    data: resultados,
+    // Cargando solo mientras no haya datos base todavía
+    isLoading: isLoading || (isFetching && !data),
+  };
 }

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Search, Plus, Filter, ChevronRight, LayoutList, LayoutGrid, Clock, AlertCircle, CheckCircle2, Loader2 } from 'lucide-react';
 import { useOrdenes, useUpdateOrden } from '../hooks/useOrdenes';
+import { matchesSearch } from '../lib/utils';
 import { format } from 'date-fns';
 
 export default function OrdenesList() {
@@ -26,10 +27,10 @@ export default function OrdenesList() {
   }));
 
   const ordenesFiltradas = ordenes.filter(orden => {
-    const coincideTexto = 
-      orden.cliente.toLowerCase().includes(filtroTexto.toLowerCase()) || 
-      orden.vehiculo.toLowerCase().includes(filtroTexto.toLowerCase()) ||
-      orden.displayId.toLowerCase().includes(filtroTexto.toLowerCase());
+    const coincideTexto = matchesSearch(
+      `${orden.displayId} ${orden.cliente} ${orden.vehiculo}`,
+      filtroTexto
+    );
 
     let coincideEstado = true;
     if (filtroEstado === 'Abiertas') {

@@ -2,14 +2,17 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Search, Plus, User, Phone, MapPin, Filter, Loader2, AlertCircle } from 'lucide-react';
 import { useClientes } from '../hooks/useClientes';
+import { matchesSearch } from '../lib/utils';
 
 export default function ClientesList() {
   const { data: clientes = [], isLoading, isError } = useClientes();
   const [filtro, setFiltro] = useState('');
 
-  const clientesFiltrados = clientes.filter(cliente => 
-    cliente.nombre?.toLowerCase().includes(filtro.toLowerCase()) || 
-    cliente.telefono?.includes(filtro)
+  const clientesFiltrados = clientes.filter(cliente =>
+    matchesSearch(
+      `${cliente.nombre || ''} ${cliente.apellido || ''} ${cliente.telefono || ''} ${cliente.email || ''}`,
+      filtro
+    )
   );
 
   return (

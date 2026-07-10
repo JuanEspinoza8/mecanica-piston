@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Search, Plus, Filter, Loader2 } from 'lucide-react';
 import { useVehiculos } from '../hooks/useVehiculos';
 import VehiculoCard from '../components/VehiculoCard';
+import { matchesSearch } from '../lib/utils';
 
 export default function VehiculosList() {
   const { data: vehiculos = [], isLoading, isError } = useVehiculos();
@@ -10,10 +11,11 @@ export default function VehiculosList() {
   const [filtro, setFiltro] = useState('');
 
   const vehiculosFiltrados = vehiculos.filter(v => {
-    const nombreDueño = v.cliente ? `${v.cliente.nombre} ${v.cliente.apellido || ''}`.trim() : '';
-    return v.patente.toLowerCase().replace(/\s/g, '').includes(filtro.toLowerCase().replace(/\s/g, '')) || 
-           v.marca.toLowerCase().includes(filtro.toLowerCase()) ||
-           nombreDueño.toLowerCase().includes(filtro.toLowerCase());
+    const nombreDueño = v.cliente ? `${v.cliente.nombre} ${v.cliente.apellido || ''}` : '';
+    return matchesSearch(
+      `${v.patente || ''} ${v.marca || ''} ${v.modelo || ''} ${nombreDueño}`,
+      filtro
+    );
   });
 
   return (
