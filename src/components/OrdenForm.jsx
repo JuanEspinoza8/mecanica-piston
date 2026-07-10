@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { ordenSchema } from '../lib/schemas';
@@ -23,13 +24,36 @@ export default function OrdenForm({ defaultValues, onSubmit, isSubmitting }) {
   const clientes = Array.from(clientesMap.values());
   const today = new Date().toISOString().split('T')[0];
 
-  const { register, handleSubmit, formState: { errors }, watch } = useForm({
+  const { register, handleSubmit, formState: { errors }, watch, setValue } = useForm({
     resolver: zodResolver(ordenSchema),
     defaultValues: defaultValues || {
       clienteId: '', vehiculoId: '', sintoma: '',
       diagnostico: '', fecha_ingreso: today, estado: 'Pendiente'
     }
   });
+
+  // La fecha se guarda en ISO (yyyy-mm-dd) pero se muestra/edita como dd/mm/aaaa
+  const isoToDisplay = (iso) => {
+    if (!iso || !/^\d{4}-\d{2}-\d{2}$/.test(iso)) return '';
+    const [y, m, d] = iso.split('-');
+    return `${d}/${m}/${y}`;
+  };
+  const [fechaDisplay, setFechaDisplay] = useState(
+    isoToDisplay((defaultValues && defaultValues.fecha_ingreso) || today)
+  );
+  const handleFechaChange = (e) => {
+    const digits = e.target.value.replace(/\D/g, '').slice(0, 8); // ddmmaaaa
+    let out = digits;
+    if (digits.length > 4) out = `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
+    else if (digits.length > 2) out = `${digits.slice(0, 2)}/${digits.slice(2)}`;
+    setFechaDisplay(out);
+    if (digits.length === 8) {
+      const dd = digits.slice(0, 2), mm = digits.slice(2, 4), yyyy = digits.slice(4);
+      setValue('fecha_ingreso', `${yyyy}-${mm}-${dd}`, { shouldValidate: true });
+    } else {
+      setValue('fecha_ingreso', '', { shouldValidate: true });
+    }
+  };
 
   const clienteIdSeleccionado = watch('clienteId');
   const vehiculosDisponibles = vehiculos.filter(v => v.cliente?.id === clienteIdSeleccionado);
@@ -88,7 +112,16 @@ export default function OrdenForm({ defaultValues, onSubmit, isSubmitting }) {
             <label className="block text-sm font-semibold text-neutral-700 dark:text-neutral-300 mb-1">Fecha de Ingreso</label>
             <div className="relative">
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><CalendarDays className="h-5 w-5 text-neutral-400" /></div>
-              <input type="date" {...register('fecha_ingreso')} className={inputCls(errors.fecha_ingreso)} />
+              <input
+                type="text"
+                inputMode="numeric"
+                value={fechaDisplay}
+                onChange={handleFechaChange}
+                placeholder="dd/mm/aaaa"
+                maxLength={10}
+                className={inputCls(errors.fecha_ingreso)}
+              />
+              <input type="hidden" {...register('fecha_ingreso')} />
             </div>
           </div>
           <div>

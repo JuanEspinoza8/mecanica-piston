@@ -96,7 +96,8 @@ export default function OrdenesList() {
     { id: 'Pendiente', titulo: 'Pendiente' },
     { id: 'En proceso', titulo: 'En Proceso' },
     { id: 'Esperando repuesto', titulo: 'Esperando Repuesto' },
-    { id: 'Terminado', titulo: 'Terminado' }
+    { id: 'Terminado', titulo: 'Terminado' },
+    { id: 'Entregado', titulo: 'Entregado' }
   ];
 
   if (isLoading) {
@@ -242,7 +243,7 @@ export default function OrdenesList() {
       ) : (
 
         /* --- VISTA DE TABLERO KANBAN --- */
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 animate-in fade-in zoom-in-95 duration-300">
+        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6 animate-in fade-in zoom-in-95 duration-300">
           {columnasKanban.map(col => {
             const ordenesColumna = ordenesFiltradas.filter(o => o.estado === col.id);
             
