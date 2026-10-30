@@ -1,6 +1,6 @@
 import { Suspense, useEffect } from 'react'
 import { Routes, Route } from 'react-router-dom'
-import { routes } from './routes'
+import AppRoutes from './AppRoutes'
 import Layout from './components/Layout'
 import ProtectedRoute from './components/ProtectedRoute'
 import ErrorBoundary from './components/ErrorBoundary'
@@ -43,11 +43,7 @@ function App() {
             <ErrorBoundary>
               <Layout>
                 <Suspense fallback={<LoadingPage />}>
-                  <Routes>
-                    {routes.map((route) => (
-                      <Route key={route.path} path={route.path} element={route.element} />
-                    ))}
-                  </Routes>
+                  <AppRoutes />
                 </Suspense>
               </Layout>
             </ErrorBoundary>

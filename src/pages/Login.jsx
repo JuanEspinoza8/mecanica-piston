@@ -65,7 +65,7 @@ export default function Login() {
 
       toast.success('¡Bienvenido al taller!');
       navigate('/', { replace: true });
-    } catch (err) {
+    } catch {
       setErrorMsg('Error de conexión. Verificá tu internet.');
       toast.error('Error de conexión');
       setIsLoading(false);

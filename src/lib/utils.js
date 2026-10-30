@@ -1,10 +1,3 @@
-import { clsx } from "clsx";
-import { twMerge } from "tailwind-merge"
-
-export function cn(...inputs) {
-  return twMerge(clsx(inputs));
-}
-
 /**
  * Normaliza texto para búsquedas tolerantes: pasa a minúsculas y elimina
  * acentos/diacríticos. Así "José" y "jose" quedan iguales.

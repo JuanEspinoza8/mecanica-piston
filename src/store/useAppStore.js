@@ -17,6 +17,10 @@ const useAppStore = create(
       pendingSyncCount: 0,
       setPendingSyncCount: (count) => set({ pendingSyncCount: count }),
 
+      // Operaciones que fallaron de forma permanente (bandeja de errores)
+      syncErrorCount: 0,
+      setSyncErrorCount: (count) => set({ syncErrorCount: count }),
+
       // Autenticación (alimentada por Supabase Auth via ProtectedRoute)
       user: null,
       isAuthenticated: false,
@@ -26,7 +30,9 @@ const useAppStore = create(
     }),
     {
       name: 'mecanica-piston-storage',
-      partialize: (state) => ({ theme: state.theme }),
+      // El usuario se recuerda para poder abrir la app sin conexión con el
+      // token vencido (ver ProtectedRoute). Al cerrar sesión queda en null.
+      partialize: (state) => ({ theme: state.theme, user: state.user }),
     }
   )
 );

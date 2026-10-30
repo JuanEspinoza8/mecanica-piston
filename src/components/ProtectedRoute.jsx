@@ -11,32 +11,30 @@ export default function ProtectedRoute({ children }) {
   const clearAuth = useAppStore((state) => state.clearAuth);
 
   useEffect(() => {
-    // Verificar sesión existente al montar
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    const resolverSesion = (session) => {
       if (session?.user) {
         setAuth({
           id: session.user.id,
           email: session.user.email,
           nombre: session.user.user_metadata?.nombre || session.user.email.split('@')[0],
         });
-      } else {
-        clearAuth();
+        return;
       }
-    });
+      // Sin conexión, Supabase no puede renovar un token vencido y devuelve
+      // "sin sesión" aunque nadie la haya cerrado. Para que la app siga
+      // funcionando offline se usa el último usuario; al volver la conexión
+      // Supabase renueva el token (o, si la sesión ya no es válida, la cierra).
+      const ultimoUsuario = useAppStore.getState().user;
+      if (!navigator.onLine && ultimoUsuario) setAuth(ultimoUsuario);
+      else clearAuth();
+    };
+
+    // Verificar sesión existente al montar
+    supabase.auth.getSession().then(({ data: { session } }) => resolverSesion(session));
 
     // Escuchar cambios de estado de auth (login, logout, token refresh)
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
-        if (session?.user) {
-          setAuth({
-            id: session.user.id,
-            email: session.user.email,
-            nombre: session.user.user_metadata?.nombre || session.user.email.split('@')[0],
-          });
-        } else {
-          clearAuth();
-        }
-      }
+      (_event, session) => resolverSesion(session)
     );
 
     return () => subscription.unsubscribe();

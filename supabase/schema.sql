@@ -1,21 +1,17 @@
 -- Supabase Schema para Mecánica Pistón
+--
+-- Crea la base completa desde cero, ya en el estado final (políticas RLS,
+-- buckets privados, triggers). Para una base que ya está en producción NO uses
+-- este archivo: aplicá las migraciones de supabase/migrations en orden
+-- (ver README → "Base de datos").
 
 -- ==============================================================================
 -- ⚠️ PELIGRO: ESTAS LÍNEAS BORRAN TODAS LAS TABLAS EXISTENTES.
 -- Usar solo para inicializar o hacer hard-reset de la base de datos.
 -- ==============================================================================
-DROP POLICY IF EXISTS "Permitir todo a todos temporalmente" ON public.clientes;
-DROP POLICY IF EXISTS "Permitir todo a todos temporalmente" ON public.vehiculos;
-DROP POLICY IF EXISTS "Permitir todo a todos temporalmente" ON public.ordenes_trabajo;
-DROP POLICY IF EXISTS "Permitir todo a todos temporalmente" ON public.repuestos;
-DROP POLICY IF EXISTS "Permitir todo a todos temporalmente" ON public.pagos;
-DROP POLICY IF EXISTS "Permitir todo a todos temporalmente" ON public.notas;
-DROP POLICY IF EXISTS "Permitir todo a todos temporalmente" ON public.historial_modificaciones;
-DROP POLICY IF EXISTS "Permitir todo a todos temporalmente" ON public.archivos;
-DROP POLICY IF EXISTS "Permitir todo a todos temporalmente" ON public.tareas_orden;
-DROP POLICY IF EXISTS "Permitir todo a todos temporalmente" ON public.deudas;
-
 DROP FUNCTION IF EXISTS public.get_saldo_cliente(UUID) CASCADE;
+DROP FUNCTION IF EXISTS public.trg_deuda_calcular_pagado() CASCADE;
+DROP FUNCTION IF EXISTS public.trg_pago_recalcular_deuda() CASCADE;
 
 DROP TABLE IF EXISTS public.archivos CASCADE;
 DROP TABLE IF EXISTS public.historial_modificaciones CASCADE;
@@ -65,6 +61,7 @@ CREATE TABLE public.ordenes_trabajo (
     estado TEXT DEFAULT 'Pendiente' CHECK (estado IN ('Pendiente', 'En proceso', 'Esperando repuesto', 'Terminado', 'Entregado')),
     motivo_espera TEXT,
     notas TEXT,
+    mano_de_obra DECIMAL(10, 2) NOT NULL DEFAULT 0 CHECK (mano_de_obra >= 0),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
@@ -146,9 +143,14 @@ CREATE TABLE public.archivos (
 -- FUNCIONES RPC
 -- ==============================================================================
 
--- Función para obtener el saldo de un cliente (basada en deudas)
+-- Función para obtener el saldo de un cliente (basada en deudas).
+-- SECURITY INVOKER: respeta RLS, así que solo devuelve datos a quien puede verlos.
 CREATE OR REPLACE FUNCTION public.get_saldo_cliente(p_cliente_id UUID)
-RETURNS DECIMAL AS $$
+RETURNS DECIMAL
+LANGUAGE plpgsql
+SECURITY INVOKER
+SET search_path = public
+AS $$
 BEGIN
     -- Saldo = suma de (monto_total - monto_pagado) de deudas no pagadas
     RETURN COALESCE((
@@ -158,34 +160,69 @@ BEGIN
           AND estado != 'pagada'
     ), 0);
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.get_saldo_cliente(UUID) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.get_saldo_cliente(UUID) TO authenticated;
 
 -- ==============================================================================
 -- SEGURIDAD Y RLS
+--
+-- Solo usuarios con sesión acceden a los datos. Requisito: el registro público
+-- tiene que estar deshabilitado (Authentication → Sign In / Providers →
+-- "Allow new users to sign up"). Para restringir además a una lista de
+-- usuarios, ver supabase/migrations/006_usuarios_autorizados.sql.
 -- ==============================================================================
 
-ALTER TABLE public.clientes ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.vehiculos ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.ordenes_trabajo ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.repuestos ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.tareas_orden ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.pagos ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.deudas ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.notas ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.historial_modificaciones ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.archivos ENABLE ROW LEVEL SECURITY;
+DO $$
+DECLARE
+  t TEXT;
+BEGIN
+  FOREACH t IN ARRAY ARRAY[
+    'clientes', 'vehiculos', 'ordenes_trabajo', 'tareas_orden', 'repuestos',
+    'deudas', 'pagos', 'notas', 'historial_modificaciones', 'archivos'
+  ] LOOP
+    EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', t);
+    EXECUTE format(
+      'CREATE POLICY "Acceso autenticado" ON public.%I
+         FOR ALL TO authenticated
+         USING (true) WITH CHECK (true)',
+      t
+    );
+  END LOOP;
+END $$;
 
--- Políticas temporales (Permitir todo para desarrollo, luego se ajustará con Auth)
-CREATE POLICY "Permitir todo a todos temporalmente" ON public.clientes FOR ALL USING (true);
-CREATE POLICY "Permitir todo a todos temporalmente" ON public.vehiculos FOR ALL USING (true);
-CREATE POLICY "Permitir todo a todos temporalmente" ON public.ordenes_trabajo FOR ALL USING (true);
-CREATE POLICY "Permitir todo a todos temporalmente" ON public.repuestos FOR ALL USING (true);
-CREATE POLICY "Permitir todo a todos temporalmente" ON public.tareas_orden FOR ALL USING (true);
-CREATE POLICY "Permitir todo a todos temporalmente" ON public.pagos FOR ALL USING (true);
-CREATE POLICY "Permitir todo a todos temporalmente" ON public.deudas FOR ALL USING (true);
-CREATE POLICY "Permitir todo a todos temporalmente" ON public.notas FOR ALL USING (true);
-CREATE POLICY "Permitir todo a todos temporalmente" ON public.historial_modificaciones FOR ALL USING (true);
-CREATE POLICY "Permitir todo a todos temporalmente" ON public.archivos FOR ALL USING (true);
+-- ==============================================================================
+-- STORAGE
+--
+-- Buckets privados: el front pide URLs firmadas (createSignedUrl), así que un
+-- comprobante o una foto no se abren sin sesión aunque alguien tenga el link.
+-- ==============================================================================
+
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('archivos', 'archivos', false), ('archivos_pagos', 'archivos_pagos', false)
+ON CONFLICT (id) DO UPDATE SET public = EXCLUDED.public;
+
+DROP POLICY IF EXISTS "Archivos del taller: lectura" ON storage.objects;
+CREATE POLICY "Archivos del taller: lectura" ON storage.objects
+  FOR SELECT TO authenticated
+  USING (bucket_id IN ('archivos', 'archivos_pagos'));
+
+DROP POLICY IF EXISTS "Archivos del taller: subida" ON storage.objects;
+CREATE POLICY "Archivos del taller: subida" ON storage.objects
+  FOR INSERT TO authenticated
+  WITH CHECK (bucket_id IN ('archivos', 'archivos_pagos'));
+
+DROP POLICY IF EXISTS "Archivos del taller: reemplazo" ON storage.objects;
+CREATE POLICY "Archivos del taller: reemplazo" ON storage.objects
+  FOR UPDATE TO authenticated
+  USING (bucket_id IN ('archivos', 'archivos_pagos'))
+  WITH CHECK (bucket_id IN ('archivos', 'archivos_pagos'));
+
+DROP POLICY IF EXISTS "Archivos del taller: borrado" ON storage.objects;
+CREATE POLICY "Archivos del taller: borrado" ON storage.objects
+  FOR DELETE TO authenticated
+  USING (bucket_id IN ('archivos', 'archivos_pagos'));
 
 -- ==============================================================================
 -- TRIGGERS PARA HISTORIAL DE MODIFICACIONES
@@ -203,7 +240,7 @@ BEGIN
   );
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
 -- Función: registrar cambio de estado de orden
 CREATE OR REPLACE FUNCTION public.trg_historial_orden_estado()
@@ -223,7 +260,7 @@ BEGIN
   END IF;
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
 -- Función: registrar agregado de repuesto
 CREATE OR REPLACE FUNCTION public.trg_historial_repuesto_agregado()
@@ -240,7 +277,7 @@ BEGIN
   );
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
 -- Función: registrar eliminación de repuesto
 CREATE OR REPLACE FUNCTION public.trg_historial_repuesto_eliminado()
@@ -257,7 +294,7 @@ BEGIN
   );
   RETURN OLD;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
 -- Crear los triggers
 DROP TRIGGER IF EXISTS trg_orden_creada ON public.ordenes_trabajo;
@@ -279,3 +316,64 @@ DROP TRIGGER IF EXISTS trg_repuesto_eliminado ON public.repuestos;
 CREATE TRIGGER trg_repuesto_eliminado
   AFTER DELETE ON public.repuestos
   FOR EACH ROW EXECUTE FUNCTION public.trg_historial_repuesto_eliminado();
+
+-- ==============================================================================
+-- DEUDAS: monto_pagado y estado se calculan desde la tabla pagos
+--
+-- El cliente nunca escribe monto_pagado: si lo manda, se ignora. Así dos
+-- dispositivos (o un pago encolado offline) no se pisan entre sí.
+-- ==============================================================================
+
+CREATE OR REPLACE FUNCTION public.trg_deuda_calcular_pagado()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SET search_path = public
+AS $$
+DECLARE
+  v_pagado DECIMAL(10, 2);
+BEGIN
+  SELECT COALESCE(SUM(monto), 0) INTO v_pagado
+  FROM public.pagos
+  WHERE deuda_id = NEW.id;
+
+  -- Se topea en monto_total para que el saldo nunca sea negativo
+  -- (el front ya impide pagar de más).
+  NEW.monto_pagado := LEAST(v_pagado, NEW.monto_total);
+  NEW.estado := CASE
+    WHEN v_pagado >= NEW.monto_total THEN 'pagada'
+    WHEN v_pagado > 0 THEN 'parcial'
+    ELSE 'pendiente'
+  END;
+  RETURN NEW;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.trg_pago_recalcular_deuda()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SET search_path = public
+AS $$
+BEGIN
+  -- El UPDATE "vacío" dispara trg_deuda_calcular_pagado, que hace la cuenta.
+  IF TG_OP <> 'INSERT' AND OLD.deuda_id IS NOT NULL THEN
+    UPDATE public.deudas SET monto_pagado = monto_pagado WHERE id = OLD.deuda_id;
+  END IF;
+
+  IF TG_OP <> 'DELETE' AND NEW.deuda_id IS NOT NULL
+     AND (TG_OP = 'INSERT' OR NEW.deuda_id IS DISTINCT FROM OLD.deuda_id) THEN
+    UPDATE public.deudas SET monto_pagado = monto_pagado WHERE id = NEW.deuda_id;
+  END IF;
+
+  RETURN NULL;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_deuda_calcular_pagado ON public.deudas;
+CREATE TRIGGER trg_deuda_calcular_pagado
+  BEFORE INSERT OR UPDATE ON public.deudas
+  FOR EACH ROW EXECUTE FUNCTION public.trg_deuda_calcular_pagado();
+
+DROP TRIGGER IF EXISTS trg_pago_recalcular_deuda ON public.pagos;
+CREATE TRIGGER trg_pago_recalcular_deuda
+  AFTER INSERT OR UPDATE OR DELETE ON public.pagos
+  FOR EACH ROW EXECUTE FUNCTION public.trg_pago_recalcular_deuda();

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useForm } from 'react-hook-form';
+import { useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { ordenSchema } from '../lib/schemas';
 import { User, CarFront, FileText, Save, Loader2, Search, Stethoscope, CalendarDays, ListChecks } from 'lucide-react';
@@ -24,7 +24,7 @@ export default function OrdenForm({ defaultValues, onSubmit, isSubmitting }) {
   const clientes = Array.from(clientesMap.values());
   const today = new Date().toISOString().split('T')[0];
 
-  const { register, handleSubmit, formState: { errors }, watch, setValue } = useForm({
+  const { register, handleSubmit, formState: { errors }, control, setValue } = useForm({
     resolver: zodResolver(ordenSchema),
     defaultValues: defaultValues || {
       clienteId: '', vehiculoId: '', sintoma: '',
@@ -55,7 +55,7 @@ export default function OrdenForm({ defaultValues, onSubmit, isSubmitting }) {
     }
   };
 
-  const clienteIdSeleccionado = watch('clienteId');
+  const clienteIdSeleccionado = useWatch({ control, name: 'clienteId' });
   const vehiculosDisponibles = vehiculos.filter(v => v.cliente?.id === clienteIdSeleccionado);
   const inputCls = (err) => `block w-full pl-10 pr-3 py-3 border ${err ? 'border-red-500 focus:ring-red-500' : 'border-neutral-300 dark:border-neutral-700 focus:ring-black dark:focus:ring-red-500'} rounded-xl focus:outline-none focus:ring-1 transition-colors bg-transparent dark:bg-neutral-950 dark:text-white`;
   const selectCls = (err, disabled) => `${inputCls(err)} appearance-none pr-10 ${disabled ? 'bg-neutral-100 dark:bg-neutral-800 text-neutral-400 cursor-not-allowed' : ''}`;

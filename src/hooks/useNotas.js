@@ -1,43 +1,35 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
 import { toast } from 'sonner';
-import { cacheData, getCachedData, getCachedById, cacheOne, removeCached, addPendingSync, isOnline, getPendingCount } from '../db/offlineService';
-import useAppStore from '../store/useAppStore';
+import { cacheOne, getCachedData, removeCached } from '../db/offlineService';
+import { offlineQuery, offlineMutation, insertarOffline, actualizarOffline, borrarOffline } from './offlineHelpers';
 
 const NOTAS_KEYS = {
   all: ['notas'],
 };
 
-// Lista de notas: pendientes primero, luego completadas, ambas por fecha DESC
-export function useNotas() {
-  return useQuery({
-    queryKey: NOTAS_KEYS.all,
-    queryFn: async () => {
-      if (!isOnline()) {
-        const cached = await getCachedData('notas');
-        if (cached.length > 0) {
-          return cached.sort((a, b) => {
-            if (a.completada !== b.completada) return a.completada ? 1 : -1;
-            return new Date(b.created_at) - new Date(a.created_at);
-          });
-        }
-        return [];
-      }
-      try {
-        const { data, error } = await supabase
-          .from('notas')
-          .select('*')
-          .order('completada', { ascending: true })
-          .order('created_at', { ascending: false });
+// Pendientes primero, luego completadas, ambas por fecha DESC
+const pendientesPrimero = (a, b) => {
+  if (a.completada !== b.completada) return a.completada ? 1 : -1;
+  return new Date(b.created_at) - new Date(a.created_at);
+};
 
-        if (error) throw error;
-        await cacheData('notas', data);
-        return data;
-      } catch (err) {
-        throw err;
-      }
-    },
-  });
+// Lista de notas (también la usa usePrefetch)
+export const notasQuery = {
+  queryKey: NOTAS_KEYS.all,
+  queryFn: offlineQuery({
+    tabla: 'notas',
+    remoto: () => supabase
+      .from('notas')
+      .select('*')
+      .order('completada', { ascending: true })
+      .order('created_at', { ascending: false }),
+    local: async () => (await getCachedData('notas')).sort(pendientesPrimero),
+  }),
+};
+
+export function useNotas() {
+  return useQuery(notasQuery);
 }
 
 // Crear nota
@@ -49,28 +41,19 @@ export function useCreateNota() {
       if (!texto || texto.trim().length === 0) throw new Error('El texto es obligatorio');
       if (texto.length > 200) throw new Error('Máximo 200 caracteres');
 
-      const payload = { texto: texto.trim(), completada: false };
-
-      if (!isOnline()) {
-        const tempId = crypto.randomUUID();
-        const offlineData = { ...payload, id: tempId, created_at: new Date().toISOString() };
-        await addPendingSync('notas', 'insert', { ...payload, id: tempId });
-        const count = await getPendingCount();
-        useAppStore.getState().setPendingSyncCount(count);
-        // Cache locally for immediate display
-        await cacheOne('notas', offlineData);
-        return offlineData;
-      }
-
-      const { data, error } = await supabase
-        .from('notas')
-        .insert([payload])
-        .select()
-        .single();
-
-      if (error) throw error;
-      await cacheOne('notas', data);
-      return data;
+      return offlineMutation({
+        online: async (payload) => {
+          const { data, error } = await supabase
+            .from('notas')
+            .insert([payload])
+            .select()
+            .single();
+          if (error) throw error;
+          await cacheOne('notas', data);
+          return data;
+        },
+        offline: (payload) => insertarOffline('notas', payload),
+      })({ texto: texto.trim(), completada: false });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: NOTAS_KEYS.all });
@@ -86,28 +69,21 @@ export function useToggleNota() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ id, completada }) => {
-      if (!isOnline()) {
-        const nota = await getCachedById('notas', id);
-        if (nota) {
-          await cacheOne('notas', { ...nota, completada: !completada });
-        }
-        await addPendingSync('notas', 'update', { id, completada: !completada });
-        const count = await getPendingCount();
-        useAppStore.getState().setPendingSyncCount(count);
-        return { id, completada: !completada };
-      }
-
-      const { data, error } = await supabase
-        .from('notas')
-        .update({ completada: !completada })
-        .eq('id', id)
-        .select()
-        .single();
-
-      if (error) throw error;
-      return data;
-    },
+    mutationFn: offlineMutation({
+      online: async ({ id, completada }) => {
+        const { data, error } = await supabase
+          .from('notas')
+          .update({ completada: !completada })
+          .eq('id', id)
+          .select()
+          .single();
+        if (error) throw error;
+        await cacheOne('notas', data);
+        return data;
+      },
+      offline: ({ id, completada }) => actualizarOffline('notas', id, { completada: !completada }),
+      tabla: 'notas',
+    }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: NOTAS_KEYS.all });
     },
@@ -122,24 +98,22 @@ export function useDeleteNota() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (id) => {
-      if (!isOnline()) {
+    mutationFn: offlineMutation({
+      online: async (id) => {
+        const { error } = await supabase
+          .from('notas')
+          .delete()
+          .eq('id', id);
+        if (error) throw error;
         await removeCached('notas', id);
-        await addPendingSync('notas', 'delete', { id });
-        const count = await getPendingCount();
-        useAppStore.getState().setPendingSyncCount(count);
         return id;
-      }
-
-      const { error } = await supabase
-        .from('notas')
-        .delete()
-        .eq('id', id);
-
-      if (error) throw error;
-      await removeCached('notas', id);
-      return id;
-    },
+      },
+      offline: async (id) => {
+        await borrarOffline('notas', id);
+        return id;
+      },
+      tabla: 'notas',
+    }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: NOTAS_KEYS.all });
       toast.success('Nota eliminada');

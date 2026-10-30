@@ -1,21 +1,53 @@
+import { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { Home, Users, ClipboardList, Search, CarFront, Moon, Sun, LogOut, TrendingUp } from 'lucide-react';
 import BottomNav from './BottomNav';
 import useAppStore from '../store/useAppStore';
 import GlobalSearch from './GlobalSearch';
+import SyncErrorsPanel from './SyncErrorsPanel';
+import ConfirmModal from './ConfirmModal';
+import { toast } from 'sonner';
 import { supabase } from '../lib/supabase';
+import { clearLocalData } from '../db/offlineService';
 
 const APP_VERSION = __APP_VERSION__;
 
 export default function Layout({ children }) {
   const location = useLocation();
   const navigate = useNavigate();
-  const { theme, toggleTheme, openSearch, clearAuth, user } = useAppStore();
+  const queryClient = useQueryClient();
+  const { theme, toggleTheme, openSearch, clearAuth, user, pendingSyncCount, syncErrorCount } = useAppStore();
+  const [confirmLogout, setConfirmLogout] = useState(false);
+  const cambiosSinSincronizar = pendingSyncCount + syncErrorCount;
 
+  // Al cerrar sesión se borra todo lo guardado en el dispositivo (IndexedDB,
+  // caché del service worker y de TanStack Query) para que la próxima persona
+  // que use el equipo no vea los datos del taller.
   const handleLogout = async () => {
-    await supabase.auth.signOut();
+    setConfirmLogout(false);
+    // scope 'local': cierra solo este dispositivo (por defecto Supabase cierra
+    // la sesión en todos los dispositivos de la cuenta).
+    const { error } = await supabase.auth.signOut({ scope: 'local' });
+    if (error) {
+      // Si falla, la sesión sigue guardada: no se borran los datos locales
+      // para no dejar la app abierta y vacía.
+      toast.error('No se pudo cerrar la sesión. Revisá la conexión.');
+      return;
+    }
+    await clearLocalData();
+    queryClient.clear();
     clearAuth();
     navigate('/login');
+  };
+
+  const requestLogout = () => {
+    if (!navigator.onLine) {
+      toast.error('Para cerrar sesión necesitás conexión.');
+      return;
+    }
+    if (cambiosSinSincronizar > 0) setConfirmLogout(true);
+    else handleLogout();
   };
   
   const navItems = [
@@ -84,7 +116,7 @@ export default function Layout({ children }) {
             </p>
           )}
           <button
-            onClick={handleLogout}
+            onClick={requestLogout}
             className="group flex items-center w-full rounded-xl px-4 py-3 text-neutral-500 hover:bg-red-950/30 hover:text-red-400 transition-all duration-300"
           >
             <LogOut className="mr-3 h-5 w-5 group-hover:scale-110 transition-transform" />
@@ -116,7 +148,8 @@ export default function Layout({ children }) {
             </div>
           </div>
           
-          <div className="flex-1 md:hidden flex justify-end">
+          <div className="flex-1 md:hidden flex justify-end items-center">
+            <SyncErrorsPanel />
             {/* Botón Theme Mobile */}
             <button 
               onClick={toggleTheme}
@@ -133,7 +166,7 @@ export default function Layout({ children }) {
             </button>
             {/* Botón Logout Mobile */}
             <button 
-              onClick={handleLogout}
+              onClick={requestLogout}
               className="p-2 text-neutral-400 hover:text-red-500 transition-colors"
             >
               <LogOut className="w-5 h-5" />
@@ -142,6 +175,7 @@ export default function Layout({ children }) {
           
           {/* Barra de búsqueda interactiva Desktop */}
           <div className="hidden max-w-2xl flex-1 md:flex items-center space-x-4">
+            <SyncErrorsPanel />
             <button 
               onClick={openSearch}
               className="group flex h-12 w-full max-w-md items-center rounded-full border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900 px-5 text-sm text-neutral-400 transition-all hover:border-red-500 dark:hover:border-red-500/50 hover:bg-white dark:hover:bg-neutral-800"
@@ -171,6 +205,15 @@ export default function Layout({ children }) {
         {/* BottomNav (Solo en Mobile) */}
         <BottomNav />
       </div>
+
+      <ConfirmModal
+        isOpen={confirmLogout}
+        onClose={() => setConfirmLogout(false)}
+        onConfirm={handleLogout}
+        titulo="Hay cambios sin sincronizar"
+        mensaje={`${cambiosSinSincronizar} cambio${cambiosSinSincronizar > 1 ? 's' : ''} hecho${cambiosSinSincronizar > 1 ? 's' : ''} sin conexión todavía no llegó al servidor. Si cerrás sesión ahora se pierden. Conectate y esperá a que se sincronicen.`}
+        textoConfirmar="Cerrar sesión igual"
+      />
     </div>
   );
 }

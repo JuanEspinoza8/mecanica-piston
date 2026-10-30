@@ -1,4 +1,4 @@
-import { useForm } from 'react-hook-form';
+import { useForm, useWatch } from 'react-hook-form';
 import { useEffect } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { deudaSchema } from '../lib/schemas';
@@ -8,7 +8,7 @@ import { useCreateDeuda } from '../hooks/useDeudas';
 export default function CrearDeudaModal({ isOpen, onClose, clienteId, ordenId, defaultConcepto, defaultMonto }) {
   const createDeuda = useCreateDeuda();
 
-  const { register, handleSubmit, watch, reset, formState: { errors } } = useForm({
+  const { register, handleSubmit, control, reset, formState: { errors } } = useForm({
     resolver: zodResolver(deudaSchema),
     defaultValues: {
       concepto: defaultConcepto || '',
@@ -30,9 +30,10 @@ export default function CrearDeudaModal({ isOpen, onClose, clienteId, ordenId, d
     }
   }, [isOpen, defaultConcepto, defaultMonto, reset]);
 
-  const enCuotas = watch('en_cuotas');
-  const cantidadCuotas = watch('cantidad_cuotas');
-  const montoInput = watch('monto_total');
+  const [enCuotas, cantidadCuotas, montoInput] = useWatch({
+    control,
+    name: ['en_cuotas', 'cantidad_cuotas', 'monto_total'],
+  });
 
   // Calcular monto numérico para preview
   const montoNum = (() => {
@@ -61,7 +62,7 @@ export default function CrearDeudaModal({ isOpen, onClose, clienteId, ordenId, d
         cantidad_cuotas: data.en_cuotas ? data.cantidad_cuotas : 1,
       });
       onClose();
-    } catch (e) {
+    } catch {
       // error handled in hook
     }
   };

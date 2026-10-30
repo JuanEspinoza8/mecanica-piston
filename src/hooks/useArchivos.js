@@ -1,7 +1,9 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
 import imageCompression from 'browser-image-compression';
-import { cacheData, getCachedByIndex, isOnline } from '../db/offlineService';
+import { getCachedData, getCachedByIndex, isOnline, removeCached } from '../db/offlineService';
+import { BUCKET_ARCHIVOS, SIGNED_URL_REFRESH_MS, getSignedUrls } from '../lib/storage';
+import { offlineQuery } from './offlineHelpers';
 import { toast } from 'sonner';
 
 export const ARCHIVOS_KEYS = {
@@ -9,41 +11,43 @@ export const ARCHIVOS_KEYS = {
   orden: (ordenId) => ['archivos', 'orden', ordenId],
 };
 
+const masNuevoPrimero = (a, b) => new Date(b.created_at) - new Date(a.created_at);
+
+// El bucket es privado: cada archivo se muestra con una URL firmada que se
+// guarda también en el caché local para poder usarla sin conexión.
+async function conUrlsFirmadas(archivos) {
+  const urls = await getSignedUrls(BUCKET_ARCHIVOS, archivos.map(a => a.ruta_storage));
+  return archivos.map(a => ({ ...a, url: urls[a.ruta_storage] || null }));
+}
+
+// Query de todos los archivos (la usa usePrefetch para llenar el caché offline)
+export const archivosQuery = {
+  queryKey: ['archivos', 'all'],
+  queryFn: offlineQuery({
+    tabla: 'archivos',
+    remoto: () => supabase.from('archivos').select('*'),
+    preparar: conUrlsFirmadas,
+    local: () => getCachedData('archivos'),
+  }),
+};
+
 export function useArchivos(ordenId) {
   return useQuery({
     queryKey: ARCHIVOS_KEYS.orden(ordenId),
-    queryFn: async () => {
-      if (!ordenId) return [];
-      if (!isOnline()) {
-        const cached = await getCachedByIndex('archivos', 'orden_id', ordenId);
-        // URLs won't work offline but at least metadata is available
-        return cached.map(a => ({ ...a, url: a.ruta_storage || '' }));
-      }
-      try {
-        const { data, error } = await supabase
-          .from('archivos')
-          .select('*')
-          .eq('orden_id', ordenId)
-          .order('created_at', { ascending: false });
-          
-        if (error) throw error;
-        
-        // Cache for offline
-        await cacheData('archivos', data);
-
-        return data.map(archivo => {
-          const { data: publicUrlData } = supabase.storage
-            .from('archivos')
-            .getPublicUrl(archivo.ruta_storage);
-          return { ...archivo, url: publicUrlData.publicUrl };
-        });
-      } catch (err) {
-        const cached = await getCachedByIndex('archivos', 'orden_id', ordenId);
-        if (cached && cached.length > 0) return cached.map(a => ({ ...a, url: a.ruta_storage || '' }));
-        throw err;
-      }
-    },
+    queryFn: offlineQuery({
+      tabla: 'archivos',
+      remoto: () => supabase
+        .from('archivos')
+        .select('*')
+        .eq('orden_id', ordenId)
+        .order('created_at', { ascending: false }),
+      preparar: conUrlsFirmadas,
+      local: async () => (await getCachedByIndex('archivos', 'orden_id', ordenId)).sort(masNuevoPrimero),
+      alcance: { campo: 'orden_id', valor: ordenId },
+    }),
     enabled: !!ordenId,
+    // Renueva las URLs firmadas mientras la pantalla siga abierta
+    refetchInterval: SIGNED_URL_REFRESH_MS,
   });
 }
 
@@ -52,52 +56,47 @@ export function useArchivosVehiculo(vehiculoId) {
   return useQuery({
     queryKey: ['archivos', 'vehiculo', vehiculoId],
     queryFn: async () => {
-      if (!vehiculoId) return [];
-      if (!isOnline()) {
-        // Fallback since offline caching of complex join is hard
-        return [];
-      }
-      try {
-        const { data: ordenes } = await supabase
-          .from('ordenes_trabajo')
-          .select('id, descripcion')
-          .eq('vehiculo_id', vehiculoId);
-        if (!ordenes || ordenes.length === 0) return [];
+      // Órdenes del vehículo (para filtrar archivos y mostrar a qué orden pertenecen)
+      const ordenes = await offlineQuery({
+        remoto: () => supabase.from('ordenes_trabajo').select('id, descripcion').eq('vehiculo_id', vehiculoId),
+        local: () => getCachedByIndex('ordenes_trabajo', 'vehiculo_id', vehiculoId),
+      })();
+      if (ordenes.length === 0) return [];
 
-        const ordenIds = ordenes.map(o => o.id);
-        const { data, error } = await supabase
+      const ordenIds = ordenes.map(o => o.id);
+      const archivos = await offlineQuery({
+        tabla: 'archivos',
+        remoto: () => supabase
           .from('archivos')
           .select('*')
           .in('orden_id', ordenIds)
-          .order('created_at', { ascending: false });
-        if (error) throw error;
+          .order('created_at', { ascending: false }),
+        preparar: conUrlsFirmadas,
+        // Antes devolvía una lista vacía sin conexión
+        local: async () => {
+          const ids = new Set(ordenIds);
+          return (await getCachedData('archivos')).filter(a => ids.has(a.orden_id)).sort(masNuevoPrimero);
+        },
+        alcance: false,
+      })();
 
-        await cacheData('archivos', data);
-
-        const ordenMap = Object.fromEntries(ordenes.map(o => [o.id, o.descripcion]));
-        return data.map(archivo => {
-          const { data: publicUrlData } = supabase.storage
-            .from('archivos')
-            .getPublicUrl(archivo.ruta_storage);
-          return {
-            ...archivo,
-            url: publicUrlData.publicUrl,
-            ordenDescripcion: ordenMap[archivo.orden_id] || '',
-            displayOrdenId: `ORD-${archivo.orden_id.substring(0, 4).toUpperCase()}`,
-          };
-        });
-      } catch (err) {
-        // Fallback for offline if network request fails despite isOnline() being true
-        return [];
-      }
+      const ordenMap = Object.fromEntries(ordenes.map(o => [o.id, o.descripcion]));
+      return archivos.map(archivo => ({
+        ...archivo,
+        ordenDescripcion: ordenMap[archivo.orden_id] || '',
+        displayOrdenId: `ORD-${archivo.orden_id.substring(0, 4).toUpperCase()}`,
+      }));
     },
     enabled: !!vehiculoId,
+    refetchInterval: SIGNED_URL_REFRESH_MS,
   });
 }
 
+// Subir y borrar archivos requiere conexión: las fotos y PDF de una orden no
+// se guardan en la cola offline (los comprobantes de pago sí, ver usePagos).
 export function useFileUpload() {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
     mutationFn: async ({ file, ordenId, tipo }) => {
       if (!isOnline()) {
@@ -106,7 +105,7 @@ export function useFileUpload() {
       }
 
       let fileToUpload = file;
-      
+
       // Validar documentos PDF
       if (tipo === 'documento') {
         if (!file.name.toLowerCase().endsWith('.pdf')) {
@@ -117,7 +116,7 @@ export function useFileUpload() {
           throw new Error(`El archivo PDF no puede superar los ${maxSizeMB} MB`);
         }
       }
-      
+
       // Comprimir solo si es imagen
       if (tipo === 'imagen' && file.type.startsWith('image/')) {
         const options = {
@@ -137,7 +136,7 @@ export function useFileUpload() {
       const fileName = `${ordenId}/${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
 
       const { error: uploadError } = await supabase.storage
-        .from('archivos')
+        .from(BUCKET_ARCHIVOS)
         .upload(fileName, fileToUpload);
 
       if (uploadError) throw uploadError;
@@ -174,7 +173,7 @@ export function useDeleteArchivo() {
       }
 
       const { error: storageError } = await supabase.storage
-        .from('archivos')
+        .from(BUCKET_ARCHIVOS)
         .remove([archivo.ruta_storage]);
       if (storageError) throw storageError;
 
@@ -183,7 +182,8 @@ export function useDeleteArchivo() {
         .delete()
         .eq('id', archivo.id);
       if (dbError) throw dbError;
-      
+
+      await removeCached('archivos', archivo.id);
       return archivo;
     },
     onSuccess: (archivo) => {

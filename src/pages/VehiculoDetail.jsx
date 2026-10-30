@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { ArrowLeft, CarFront, User, Calendar, Palette, Hash, ClipboardList, Plus, ChevronRight, Loader2, Trash2, History, DollarSign, Camera, FileText, Download, Edit3, X } from 'lucide-react';
+import { ArrowLeft, CarFront, User, ClipboardList, Plus, ChevronRight, Loader2, Trash2, History, DollarSign, Camera, FileText, Download, Edit3, X } from 'lucide-react';
 import { useVehiculo, useDeleteVehiculo, useUpdateVehiculo } from '../hooks/useVehiculos';
 import { useOrdenes } from '../hooks/useOrdenes';
 import { useHistorialModificaciones } from '../hooks/useHistorial';
@@ -25,21 +25,21 @@ export default function VehiculoDetail() {
   const { data: archivosVehiculo = [] } = useArchivosVehiculo(id);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-  const [viewerOpen, setViewerOpen] = useState(false);
-  const [viewerIndex, setViewerIndex] = useState(0);
+  // Índice de la foto abierta en el visor (null = cerrado)
+  const [viewerIndex, setViewerIndex] = useState(null);
 
   const handleDelete = async () => {
     try {
       await deleteVehiculo(id);
       toast.success('Vehículo eliminado correctamente');
       navigate('/vehiculos');
-    } catch (error) {
+    } catch {
       toast.error('Error al eliminar el vehículo');
     }
   };
 
   // Traer las órdenes reales del vehículo
-  const { data: ordenesData = [], isLoading: isLoadingOrdenes } = useOrdenes(id);
+  const { data: ordenesData = [] } = useOrdenes(id);
 
   // Historial de modificaciones
   const { data: historial = [], isLoading: isLoadingHistorial } = useHistorialModificaciones(id);
@@ -199,10 +199,10 @@ export default function VehiculoDetail() {
                 {fotos.map((foto, idx) => (
                   <div
                     key={foto.id}
-                    onClick={() => { setViewerIndex(idx); setViewerOpen(true); }}
+                    onClick={() => setViewerIndex(idx)}
                     className="aspect-square rounded-xl overflow-hidden cursor-pointer border border-neutral-200 dark:border-neutral-800 hover:border-red-400 transition-all hover:shadow-md group relative"
                   >
-                    <img src={foto.url} alt="" className="w-full h-full object-cover" loading="lazy" />
+                    <img src={foto.url} alt="" crossOrigin="anonymous" className="w-full h-full object-cover" loading="lazy" />
                     <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors" />
                     <span className="absolute bottom-1 left-1 text-[8px] font-bold text-white bg-black/60 px-1.5 py-0.5 rounded-full">
                       {foto.displayOrdenId}
@@ -238,12 +238,13 @@ export default function VehiculoDetail() {
       })()}
 
       {/* Image viewer modal */}
-      <ImageViewerModal
-        isOpen={viewerOpen}
-        images={archivosVehiculo.filter(a => a.tipo === 'imagen')}
-        initialIndex={viewerIndex}
-        onClose={() => setViewerOpen(false)}
-      />
+      {viewerIndex !== null && (
+        <ImageViewerModal
+          images={archivosVehiculo.filter(a => a.tipo === 'imagen')}
+          initialIndex={viewerIndex}
+          onClose={() => setViewerIndex(null)}
+        />
+      )}
 
       {/* Deudas asociadas a órdenes de este vehículo */}
       {deudasVehiculo.length > 0 && (

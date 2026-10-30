@@ -1,21 +1,13 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
-import { getCachedData, isOnline } from '../db/offlineService';
+import { getCachedData } from '../db/offlineService';
+import { offlineQuery } from './offlineHelpers';
 
 export function useEconomia() {
   return useQuery({
     queryKey: ['economia'],
-    queryFn: async () => {
-      if (!isOnline()) {
-        const [pagos, deudas, repuestos] = await Promise.all([
-          getCachedData('pagos'),
-          getCachedData('deudas'),
-          getCachedData('repuestos'),
-        ]);
-        return buildEconomiaData(pagos, deudas, repuestos, new Date());
-      }
-
-      try {
+    queryFn: offlineQuery({
+      remoto: async () => {
         const now = new Date();
         const hace12Meses = new Date(now.getFullYear() - 1, now.getMonth(), 1).toISOString();
 
@@ -31,20 +23,17 @@ export function useEconomia() {
             .gte('created_at', hace12Meses),
         ]);
 
-        return buildEconomiaData(pagos || [], deudas || [], repuestos || [], now);
-      } catch (err) {
-        if (!isOnline()) {
-          // Fallback offline: construir desde cache
-          const [pagos, deudas, repuestos] = await Promise.all([
-            getCachedData('pagos'),
-            getCachedData('deudas'),
-            getCachedData('repuestos'),
-          ]);
-          return buildEconomiaData(pagos, deudas, repuestos, new Date());
-        }
-        throw err;
-      }
-    },
+        return { data: buildEconomiaData(pagos || [], deudas || [], repuestos || [], now), error: null };
+      },
+      local: async () => {
+        const [pagos, deudas, repuestos] = await Promise.all([
+          getCachedData('pagos'),
+          getCachedData('deudas'),
+          getCachedData('repuestos'),
+        ]);
+        return buildEconomiaData(pagos, deudas, repuestos, new Date());
+      },
+    }),
     staleTime: 1000 * 60 * 5, // 5 min cache
   });
 }

@@ -1,5 +1,5 @@
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Phone, Mail, MapPin, CarFront, Calendar, Edit3, Trash2, Loader2, AlertCircle, DollarSign, Plus, X, Save } from 'lucide-react';
+import { ArrowLeft, Phone, Mail, MapPin, Calendar, Edit3, Trash2, Loader2, AlertCircle, DollarSign, Plus, X, Save } from 'lucide-react';
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -234,7 +234,9 @@ export default function ClienteDetail() {
             try {
               await deleteDeuda({ id: deleteDeudaTarget.id, cliente_id: deleteDeudaTarget.cliente_id });
               setDeleteDeudaTarget(null);
-            } catch (e) {}
+            } catch {
+              // El hook ya muestra el error
+            }
           }
         }}
         titulo="¿Eliminar esta deuda?"
