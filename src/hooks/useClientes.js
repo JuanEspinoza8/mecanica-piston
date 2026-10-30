@@ -83,6 +83,7 @@ export function useUpdateCliente() {
       },
       offline: ({ id, ...datos }) => actualizarOffline('clientes', id, datos),
       aviso: 'Cambios guardados localmente',
+      tabla: 'clientes',
     }),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: CLIENTES_KEYS.all });
@@ -111,6 +112,7 @@ export function useDeleteCliente() {
         return id;
       },
       aviso: 'Eliminación pendiente de sincronizar',
+      tabla: 'clientes',
     }),
     onSuccess: (id) => {
       queryClient.invalidateQueries({ queryKey: CLIENTES_KEYS.all });

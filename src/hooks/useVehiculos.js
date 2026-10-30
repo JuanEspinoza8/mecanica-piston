@@ -151,6 +151,7 @@ export function useUpdateVehiculo() {
       },
       offline: async ({ id, ...datos }) => mapFromDB(await actualizarOffline('vehiculos', id, mapToDB(datos))),
       aviso: 'Cambios guardados localmente',
+      tabla: 'vehiculos',
     }),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: VEHICULOS_KEYS.all });
@@ -179,6 +180,7 @@ export function useDeleteVehiculo() {
         return id;
       },
       aviso: 'Eliminación pendiente de sincronizar',
+      tabla: 'vehiculos',
     }),
     onSuccess: (id) => {
       queryClient.invalidateQueries({ queryKey: VEHICULOS_KEYS.all });

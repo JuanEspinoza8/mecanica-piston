@@ -196,6 +196,7 @@ export function useDeleteDeuda() {
         await borrarOffline('deudas', id);
         return { id, cliente_id };
       },
+      tabla: 'deudas',
     }),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: DEUDAS_KEYS.all });

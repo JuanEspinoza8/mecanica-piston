@@ -5,9 +5,12 @@ import {
   cacheOne,
   generateId,
   getCachedById,
+  getCambiosLocales,
+  haySesion,
   isOnline,
   offlineCascadeDelete,
   reconcileOne,
+  tieneCambiosLocales,
 } from '../db/offlineService';
 
 /**
@@ -18,11 +21,33 @@ import {
 const tieneDatos = (valor) => (Array.isArray(valor) ? valor.length > 0 : valor != null);
 
 /**
+ * Los cambios hechos offline que todavía no llegaron al servidor (en cola o
+ * en la bandeja de errores) se muestran igual con conexión: las altas y
+ * modificaciones con su copia local, y las bajas ocultas. Si no, un pago
+ * pendiente desaparecería de la pantalla y el usuario lo cargaría de nuevo.
+ */
+async function superponerCambiosLocales(tabla, filas, local) {
+  const cambios = await getCambiosLocales(tabla);
+  if (cambios.size === 0) return filas;
+
+  const locales = (await local()).filter(r => cambios.get(r.id) === 'upsert');
+  const localPorId = new Map(locales.map(r => [r.id, r]));
+  const resultado = filas
+    .filter(f => cambios.get(f.id) !== 'delete')
+    .map(f => localPorId.get(f.id) ?? f);
+  const presentes = new Set(resultado.map(r => r.id));
+  return [...resultado, ...locales.filter(r => !presentes.has(r.id))];
+}
+
+/**
  * queryFn de TanStack Query para una lista con caché offline.
  *
  * - Sin conexión: devuelve `local()`.
  * - Con conexión: ejecuta `remoto()` (un query de Supabase), guarda el
- *   resultado en IndexedDB reconciliando según `alcance` y lo devuelve.
+ *   resultado en IndexedDB reconciliando según `alcance` y lo devuelve con
+ *   los cambios locales sin sincronizar superpuestos.
+ * - Sin sesión (por ejemplo, falló el refresh del token): devuelve `local()`.
+ *   La consulta saldría con la anon key y RLS devolvería listas vacías.
  * - Si la red falla: devuelve el caché si tiene algo; si no, el error.
  *
  * @param {object} opciones
@@ -36,13 +61,16 @@ const tieneDatos = (valor) => (Array.isArray(valor) ? valor.length > 0 : valor !
  */
 export function offlineQuery({ tabla, remoto, local, alcance, preparar, mapear = (x) => x }) {
   return async () => {
-    if (!isOnline()) return mapear(await local());
+    if (!isOnline() || !(await haySesion())) return mapear(await local());
 
     try {
       const { data, error } = await remoto();
       if (error) throw error;
-      const filas = preparar ? await preparar(data) : data;
-      if (tabla) await cacheData(tabla, filas, alcance);
+      let filas = preparar ? await preparar(data) : data;
+      if (tabla) {
+        await cacheData(tabla, filas, alcance);
+        filas = await superponerCambiosLocales(tabla, filas, local);
+      }
       return mapear(filas);
     } catch (error) {
       const cached = await local();
@@ -67,12 +95,14 @@ export function offlineQueryOne({ tabla, id, remoto, mapear = (x) => x }) {
       return cached ? mapear(cached) : null;
     };
 
-    if (!isOnline()) return local();
+    if (!isOnline() || !(await haySesion())) return local();
 
     try {
       const { data, error } = await remoto();
       if (error) throw error;
       await reconcileOne(tabla, id, data);
+      // Con cambios sin sincronizar, la versión local es la que vale
+      if (await tieneCambiosLocales(tabla, id)) return local();
       // Si no existe en el servidor pero tiene cambios locales (por ejemplo,
       // se creó offline y todavía no se sincronizó), se muestra la copia local.
       return data ? mapear(data) : local();
@@ -84,6 +114,8 @@ export function offlineQueryOne({ tabla, id, remoto, mapear = (x) => x }) {
   };
 }
 
+const idPorDefecto = (variables) => (typeof variables === 'string' ? variables : variables?.id);
+
 /**
  * mutationFn que funciona con y sin conexión.
  *
@@ -91,15 +123,26 @@ export function offlineQueryOne({ tabla, id, remoto, mapear = (x) => x }) {
  * - Sin conexión: `offline(variables)`, que actualiza IndexedDB y encola el
  *   cambio (con insertarOffline, actualizarOffline o borrarOffline), y un
  *   aviso "Sin conexión — ...".
+ * - Con conexión pero con cambios del mismo registro todavía en la cola
+ *   (indicando `tabla`): también va por la cola, para respetar el orden. Si
+ *   no, la cola aplicaría después un cambio viejo encima del nuevo, o un
+ *   borrado llegaría antes que el alta.
  *
  * @param {object} opciones
  * @param {(variables: any) => Promise<any>} opciones.online
  * @param {(variables: any) => Promise<any>} opciones.offline
  * @param {string | ((variables: any) => string | null)} [opciones.aviso] - Texto del aviso offline
+ * @param {string} [opciones.tabla] - Tabla del registro que se modifica o borra
+ * @param {(variables: any) => string} [opciones.idDe] - Cómo sacar el id de las variables
  */
-export function offlineMutation({ online, offline, aviso }) {
+export function offlineMutation({ online, offline, aviso, tabla, idDe = idPorDefecto }) {
   return async (variables) => {
-    if (isOnline()) return online(variables);
+    if (isOnline()) {
+      const id = tabla ? idDe(variables) : null;
+      if (!id || !(await tieneCambiosLocales(tabla, id))) return online(variables);
+      // El cambio se encola detrás de los anteriores y la cola se procesa enseguida
+      return offline(variables);
+    }
 
     const resultado = await offline(variables);
     const texto = typeof aviso === 'function' ? aviso(variables) : aviso;

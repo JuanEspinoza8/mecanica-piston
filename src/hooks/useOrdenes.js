@@ -171,6 +171,7 @@ export function useUpdateOrden() {
       },
       offline: ({ id, ...updates }) => actualizarOffline('ordenes_trabajo', id, cambiosOrdenToDB(updates)),
       aviso: 'Cambios guardados localmente',
+      tabla: 'ordenes_trabajo',
     }),
     onSuccess: (data, variables) => {
       // Aplicar el cambio al detalle ya cargado (conserva los joins) para que
@@ -203,6 +204,7 @@ export function useDeleteOrden() {
         return id;
       },
       aviso: 'Eliminación de orden pendiente de sincronizar',
+      tabla: 'ordenes_trabajo',
     }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ORDENES_KEYS.all });
@@ -284,6 +286,7 @@ export function useDeleteRepuesto() {
         return { orden_id: ordenId };
       },
       aviso: 'Eliminación pendiente de sincronizar',
+      tabla: 'repuestos',
     }),
     onSuccess: (data) => {
       if (data && data.orden_id) {
@@ -361,6 +364,7 @@ export function useUpdateTarea() {
         return { id, orden_id: ordenId, estado };
       },
       aviso: 'Cambio guardado localmente',
+      tabla: 'tareas_orden',
     }),
     onSuccess: (data) => {
       if (data && data.orden_id) {
@@ -390,6 +394,7 @@ export function useDeleteTarea() {
         return { orden_id: ordenId };
       },
       aviso: 'Eliminación pendiente de sincronizar',
+      tabla: 'tareas_orden',
     }),
     onSuccess: (data) => {
       if (data && data.orden_id) {

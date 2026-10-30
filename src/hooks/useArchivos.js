@@ -2,7 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
 import imageCompression from 'browser-image-compression';
 import { getCachedData, getCachedByIndex, isOnline, removeCached } from '../db/offlineService';
-import { BUCKET_ARCHIVOS, SIGNED_URL_STALE_TIME, getSignedUrls } from '../lib/storage';
+import { BUCKET_ARCHIVOS, SIGNED_URL_REFRESH_MS, getSignedUrls } from '../lib/storage';
 import { offlineQuery } from './offlineHelpers';
 import { toast } from 'sonner';
 
@@ -29,7 +29,6 @@ export const archivosQuery = {
     preparar: conUrlsFirmadas,
     local: () => getCachedData('archivos'),
   }),
-  staleTime: SIGNED_URL_STALE_TIME,
 };
 
 export function useArchivos(ordenId) {
@@ -47,7 +46,8 @@ export function useArchivos(ordenId) {
       alcance: { campo: 'orden_id', valor: ordenId },
     }),
     enabled: !!ordenId,
-    staleTime: SIGNED_URL_STALE_TIME,
+    // Renueva las URLs firmadas mientras la pantalla siga abierta
+    refetchInterval: SIGNED_URL_REFRESH_MS,
   });
 }
 
@@ -88,7 +88,7 @@ export function useArchivosVehiculo(vehiculoId) {
       }));
     },
     enabled: !!vehiculoId,
-    staleTime: SIGNED_URL_STALE_TIME,
+    refetchInterval: SIGNED_URL_REFRESH_MS,
   });
 }
 

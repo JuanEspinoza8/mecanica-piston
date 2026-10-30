@@ -16,7 +16,12 @@ export const estado = {
 export function resetSupabaseFalso() {
   estado.consultas = [];
   estado.sesion = { user: { id: 'usuario-test' } };
-  estado.responder = () => ({ data: null, error: null, status: 200 });
+  // Por defecto todo sale bien; un update devuelve la fila actualizada
+  estado.responder = (consulta) => ({
+    data: consulta.op === 'update' ? [{ id: consulta.filtros.find(([campo]) => campo === 'id')?.[1] }] : null,
+    error: null,
+    status: 200,
+  });
 }
 
 resetSupabaseFalso();

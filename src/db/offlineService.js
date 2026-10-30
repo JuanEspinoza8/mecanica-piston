@@ -43,14 +43,45 @@ function notifyQueueChange(motivo = 'actualizada') {
 // CACHE: Guardar y leer datos de IndexedDB
 // =============================================================================
 
+// PostgREST devuelve como máximo esta cantidad de filas por consulta (es el
+// "Max rows" por defecto de Supabase). Una respuesta de ese tamaño puede estar
+// cortada, así que no se usa para decidir qué borrar del caché.
+export const MAX_FILAS_SERVIDOR = 1000;
+
 /**
- * Ids con operaciones sin sincronizar (pendientes o en la bandeja de errores).
- * Esos registros reflejan cambios locales que el servidor todavía no conoce,
- * así que la reconciliación no los borra ni los pisa.
+ * Cambios locales sin sincronizar (pendientes o en la bandeja de errores) de
+ * una tabla: id → 'delete' si el registro se borró localmente, 'upsert' si se
+ * creó o modificó. El servidor todavía no los conoce, así que la
+ * reconciliación no los borra ni los pisa y las lecturas los superponen.
  */
-async function idsConCambiosLocales(tabla) {
+export async function getCambiosLocales(tabla) {
   const ops = await db.pending_sync.where('tabla').equals(tabla).toArray();
-  return new Set(ops.map(op => op.datos?.id).filter(Boolean));
+  const cambios = new Map();
+  for (const op of ops) {
+    const id = op.datos?.id;
+    if (!id) continue;
+    if (op.operacion === 'delete') cambios.set(id, 'delete');
+    else if (cambios.get(id) !== 'delete') cambios.set(id, 'upsert');
+  }
+  return cambios;
+}
+
+export async function tieneCambiosLocales(tabla, id) {
+  return (await getCambiosLocales(tabla)).has(id);
+}
+
+/**
+ * Hay sesión iniciada. Sin sesión, supabase-js manda las consultas con la
+ * anon key y RLS devuelve listas vacías sin error: no hay que tomarlas como
+ * "el servidor no tiene nada".
+ */
+export async function haySesion() {
+  try {
+    const { data } = await supabase.auth.getSession();
+    return !!data?.session;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -64,15 +95,16 @@ async function idsConCambiosLocales(tabla) {
  *   representa `datos`. Sin alcance = la tabla completa. `{ campo, valor }` = solo
  *   los registros con ese valor (por ejemplo, los repuestos de una orden).
  *   `false` = consulta parcial (limit, varios filtros): guarda sin borrar nada.
+ *   Tampoco se borra nada si la respuesta pudo venir cortada (MAX_FILAS_SERVIDOR).
  */
 export async function cacheData(tabla, datos, alcance) {
   try {
     if (!Array.isArray(datos)) return;
 
     await db.transaction('rw', db[tabla], db.pending_sync, async () => {
-      const locales = await idsConCambiosLocales(tabla);
+      const locales = await getCambiosLocales(tabla);
 
-      if (alcance !== false) {
+      if (alcance !== false && datos.length < MAX_FILAS_SERVIDOR) {
         const enServidor = new Set(datos.map(d => d.id));
         const enCache = alcance
           ? await db[tabla].where(alcance.campo).equals(alcance.valor).primaryKeys()
@@ -97,7 +129,7 @@ export async function cacheData(tabla, datos, alcance) {
 export async function reconcileOne(tabla, id, dato) {
   try {
     await db.transaction('rw', db[tabla], db.pending_sync, async () => {
-      const locales = await idsConCambiosLocales(tabla);
+      const locales = await getCambiosLocales(tabla);
       if (locales.has(id)) return;
       if (dato) await db[tabla].put(dato);
       else await db[tabla].delete(id);
@@ -244,20 +276,31 @@ export async function clearLocalData() {
  * @param {object} datos - Datos de la operación (siempre con `id` del registro)
  */
 export async function addPendingSync(tabla, operacion, datos) {
-  try {
-    await db.pending_sync.add({
-      tabla,
-      operacion,
-      datos,
-      timestamp: Date.now(),
-      estado: 'pendiente',
-      intentos: 0,
-      proximoIntento: 0,
-    });
-    notifyQueueChange('nueva');
-  } catch (error) {
-    console.error('[Offline] Error agregando pendiente:', error);
-  }
+  // Si falla (por ejemplo, IndexedDB sin espacio para un PDF), el error se
+  // propaga: la pantalla no tiene que decir "guardado" si no se encoló nada.
+  await db.pending_sync.add({
+    tabla,
+    operacion,
+    datos,
+    timestamp: Date.now(),
+    estado: 'pendiente',
+    intentos: 0,
+    proximoIntento: 0,
+  });
+  notifyQueueChange('nueva');
+}
+
+/**
+ * Deshace un alta offline que todavía no se sincronizó: saca de la cola todas
+ * sus operaciones y borra la copia local.
+ */
+export async function deshacerAltaOffline(tabla, id) {
+  await db.pending_sync
+    .where('tabla').equals(tabla)
+    .filter(op => op.datos?.id === id)
+    .delete();
+  await removeCached(tabla, id);
+  notifyQueueChange();
 }
 
 /**
@@ -282,8 +325,7 @@ export async function deleteOrdenEnServidor(id) {
     .select('ruta_storage')
     .eq('orden_id', id);
 
-  const { error } = await supabase.from('ordenes_trabajo').delete().eq('id', id);
-  if (error) throw error;
+  lanzarSiError(await supabase.from('ordenes_trabajo').delete().eq('id', id));
 
   const rutas = (archivos || []).map(a => a.ruta_storage).filter(Boolean);
   if (rutas.length > 0) {
@@ -374,7 +416,15 @@ export function clasificarError(error) {
 
   if (PG_TRANSITORIOS.has(code) || code.startsWith('08') || code === 'PGRST301') return 'transitorio';
   if (status === 401 || status === 408 || status === 429 || status >= 500) return 'transitorio';
-  if (!status && !code) return 'red';
+  if (!status && !code) {
+    // Solo es "de red" si de verdad no hubo respuesta. Cualquier otra falla
+    // sin status (un error inesperado) cuenta como intento, así no bloquea la
+    // cola para siempre.
+    const sinConexion = typeof navigator !== 'undefined' && navigator.onLine === false;
+    const falloFetch = /failed to fetch|networkerror|load failed|fetch failed|network request failed/i
+      .test(error?.message || '');
+    return sinConexion || falloFetch || error?.name === 'StorageUnknownError' ? 'red' : 'transitorio';
+  }
   return 'permanente';
 }
 
@@ -387,6 +437,7 @@ export function describirError(error) {
     case '23503': return 'Hace referencia a un registro que no existe o que se borró';
     case '23514': return `Algún valor no es válido (${detalle})`;
     case '42501': return 'Sin permisos para hacer este cambio';
+    case 'SIN_FILAS': return 'El registro ya no existe en el servidor (puede que lo hayan borrado desde otro dispositivo)';
     default: return detalle;
   }
 }
@@ -414,6 +465,19 @@ function lanzarSiError({ error, status }) {
 }
 
 /**
+ * Un update que no encuentra la fila no da error en PostgREST: la operación
+ * se daría por sincronizada aunque el cambio se haya perdido. Por eso se pide
+ * el id de vuelta y 0 filas cuenta como error.
+ */
+async function actualizarEnServidor(tabla, id, cambios) {
+  const respuesta = await supabase.from(tabla).update(cambios).eq('id', id).select('id');
+  lanzarSiError(respuesta);
+  if (!respuesta.data || respuesta.data.length === 0) {
+    throw Object.assign(new Error(`${tabla}/${id} no existe en el servidor`), { code: 'SIN_FILAS' });
+  }
+}
+
+/**
  * Ejecuta una operación individual contra Supabase.
  */
 async function executeSyncOperation(item) {
@@ -426,7 +490,7 @@ async function executeSyncOperation(item) {
     }
     case 'update': {
       const { id, ...updateData } = datos;
-      lanzarSiError(await supabase.from(tabla).update(updateData).eq('id', id));
+      await actualizarEnServidor(tabla, id, updateData);
       break;
     }
     case 'delete': {
@@ -446,7 +510,7 @@ async function executeSyncOperation(item) {
         .upload(path, file, { upsert: true });
       if (uploadError) throw uploadError;
 
-      lanzarSiError(await supabase.from(tabla).update({ [campo]: path }).eq('id', datos.id));
+      await actualizarEnServidor(tabla, datos.id, { [campo]: path });
       break;
     }
     default:
@@ -454,17 +518,30 @@ async function executeSyncOperation(item) {
   }
 }
 
+// Sin sesión (por ejemplo, falló el refresh del token al reconectar) se
+// vuelve a probar en este tiempo.
+const ESPERA_SIN_SESION_MS = 30 * 1000;
+
+const claveRegistro = (op) => `${op.tabla}:${op.datos?.id}`;
+
 async function procesarCola({ ignorarEspera = false } = {}) {
   const resultado = { processed: 0, errores: 0, reintentarEn: null };
 
   // Sin sesión, RLS rechazaría todo como "sin permisos" y la cola terminaría
-  // entera en la bandeja de errores. Se espera a que el usuario inicie sesión.
-  const { data: { session } } = await supabase.auth.getSession();
-  if (!session) return { ...resultado, sinSesion: true };
+  // entera en la bandeja de errores. Se espera a tener sesión.
+  if (!(await haySesion())) {
+    return { ...resultado, sinSesion: true, reintentarEn: Date.now() + ESPERA_SIN_SESION_MS };
+  }
 
+  // Registros con una operación en la bandeja: sus operaciones siguientes
+  // esperan a que el usuario la reintente o la descarte. Si se mandaran, un
+  // update sobre un alta que falló se perdería.
+  const bloqueados = new Set((await getSyncErrors()).map(claveRegistro));
   const pendientes = await getPendingSyncs();
 
   for (const item of pendientes) {
+    if (bloqueados.has(claveRegistro(item))) continue;
+
     // La cola es FIFO: si la primera operación está esperando un reintento,
     // las siguientes también esperan (pueden depender de ella).
     if (!ignorarEspera && item.proximoIntento > Date.now()) {
@@ -483,7 +560,10 @@ async function procesarCola({ ignorarEspera = false } = {}) {
         continue;
       }
 
-      const tipo = clasificarError(error);
+      let tipo = clasificarError(error);
+      // Un update sin filas puede ser porque se perdió la sesión a mitad de
+      // camino (RLS filtra todo): en ese caso es momentáneo.
+      if (error?.code === 'SIN_FILAS' && !(await haySesion())) tipo = 'transitorio';
       // `intentos` cuenta los rechazos del servidor (para rendirse);
       // `esperas`, todas las fallas (para alargar la espera entre intentos).
       const intentos = (item.intentos || 0) + (tipo === 'red' ? 0 : 1);
@@ -496,6 +576,7 @@ async function procesarCola({ ignorarEspera = false } = {}) {
           intentos,
           ultimoError: describirError(error),
         });
+        bloqueados.add(claveRegistro(item));
         resultado.errores++;
         continue;
       }
@@ -513,6 +594,14 @@ async function procesarCola({ ignorarEspera = false } = {}) {
 }
 
 let procesamientoEnCurso = null;
+let otraVuelta = false;
+
+// Entre pestañas de la misma app (comparten IndexedDB) se usa Web Locks para
+// que una sola procese la cola. Si el navegador no lo soporta, sigue sin lock.
+function conLockEntrePestanas(fn) {
+  const locks = globalThis.navigator?.locks;
+  return locks?.request ? locks.request('mecanica-piston-sync', fn) : fn();
+}
 
 /**
  * Procesa la cola contra Supabase en orden FIFO.
@@ -522,18 +611,36 @@ let procesamientoEnCurso = null;
  * - Error permanente: la operación pasa a la bandeja y se sigue con la próxima.
  *
  * Si ya hay un procesamiento en curso, devuelve ese mismo (lock): dos llamadas
- * en paralelo mandarían dos veces la misma operación.
+ * en paralelo mandarían dos veces la misma operación. Igual se anota que hay
+ * que dar otra vuelta, por si mientras tanto se encoló algo nuevo.
  *
  * @param {{ ignorarEspera?: boolean }} [opciones] - ignorarEspera: no respetar
  *   la espera del próximo reintento (al reconectar o al pedirlo el usuario).
  * @returns {Promise<{ processed: number, errores: number, reintentarEn: number|null, sinSesion?: boolean }>}
  */
 export function processPendingSyncs(opciones) {
-  if (!procesamientoEnCurso) {
-    procesamientoEnCurso = procesarCola(opciones).finally(() => {
-      procesamientoEnCurso = null;
-    });
+  if (procesamientoEnCurso) {
+    otraVuelta = true;
+    return procesamientoEnCurso;
   }
+
+  procesamientoEnCurso = conLockEntrePestanas(async () => {
+    const total = { processed: 0, errores: 0, reintentarEn: null };
+    let primera = true;
+    do {
+      otraVuelta = false;
+      // Las vueltas extra respetan la espera de los reintentos
+      const vuelta = await procesarCola(primera ? opciones : undefined);
+      primera = false;
+      total.processed += vuelta.processed;
+      total.errores += vuelta.errores;
+      total.reintentarEn = vuelta.reintentarEn;
+      total.sinSesion = vuelta.sinSesion;
+    } while (otraVuelta);
+    return total;
+  }).finally(() => {
+    procesamientoEnCurso = null;
+  });
   return procesamientoEnCurso;
 }
 

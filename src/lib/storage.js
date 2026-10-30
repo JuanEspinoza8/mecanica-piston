@@ -4,13 +4,14 @@ export const BUCKET_ARCHIVOS = 'archivos';
 export const BUCKET_COMPROBANTES = 'archivos_pagos';
 
 // Las URLs firmadas vencen a las 2 horas. Las queries que las generan se
-// marcan como viejas a los 30 minutos (SIGNED_URL_STALE_TIME), así que al
-// volver a la pantalla o al foco se piden URLs nuevas mucho antes de que venzan.
+// vuelven a pedir al entrar a la pantalla, al recuperar el foco y cada hora
+// mientras la pantalla siga abierta (SIGNED_URL_REFRESH_MS), así que una URL
+// en uso nunca llega a vencer.
 // Offline se usa la última URL generada: el service worker guarda las imágenes
 // sin el parámetro `token` (ver vite.config.js), así que la sirve desde su caché
 // aunque esté vencida.
 export const SIGNED_URL_TTL = 60 * 60 * 2;
-export const SIGNED_URL_STALE_TIME = 30 * 60 * 1000;
+export const SIGNED_URL_REFRESH_MS = 60 * 60 * 1000;
 
 /**
  * Devuelve la ruta dentro del bucket de comprobantes. Los pagos viejos guardaban

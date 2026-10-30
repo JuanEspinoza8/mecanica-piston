@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import db from '../db/database';
 import { addPendingSync } from '../db/offlineService';
+import { estado, resetSupabaseFalso } from '../test/supabaseFalso';
 import { actualizarOffline, borrarOffline, insertarOffline, offlineMutation, offlineQuery, offlineQueryOne } from './offlineHelpers';
 
 vi.mock('../lib/supabase', () => import('../test/supabaseFalso'));
@@ -11,6 +12,7 @@ const respuesta = (data) => () => Promise.resolve({ data, error: null });
 const falla = () => Promise.resolve({ data: null, error: { message: 'Failed to fetch' } });
 
 beforeEach(async () => {
+  resetSupabaseFalso();
   conexion(true);
   await Promise.all(db.tables.map(t => t.clear()));
 });
@@ -37,6 +39,40 @@ describe('offlineQuery', () => {
 
     expect(resultado).toEqual([{ id: 'c1', nombre: 'Ana' }]);
     expect(remoto).not.toHaveBeenCalled();
+  });
+
+  it('sin sesión no va a la red: RLS devolvería una lista vacía y se vaciaría el caché', async () => {
+    await db.clientes.put({ id: 'c1' });
+    estado.sesion = null;
+    const remoto = vi.fn().mockResolvedValue({ data: [], error: null });
+
+    const resultado = await offlineQuery({ tabla: 'clientes', remoto, local: () => db.clientes.toArray() })();
+
+    expect(resultado).toEqual([{ id: 'c1' }]);
+    expect(remoto).not.toHaveBeenCalled();
+    expect(await db.clientes.count()).toBe(1);
+  });
+
+  it('superpone los cambios offline que todavía no se sincronizaron', async () => {
+    await db.pagos.bulkPut([
+      { id: 'nuevo', monto: 500 },
+      { id: 'editado', monto: 999 },
+    ]);
+    await addPendingSync('pagos', 'insert', { id: 'nuevo' });
+    await addPendingSync('pagos', 'update', { id: 'editado', monto: 999 });
+    await addPendingSync('pagos', 'delete', { id: 'borrado' });
+
+    const resultado = await offlineQuery({
+      tabla: 'pagos',
+      remoto: respuesta([{ id: 'editado', monto: 100 }, { id: 'borrado', monto: 50 }, { id: 'otro', monto: 10 }]),
+      local: () => db.pagos.toArray(),
+    })();
+
+    expect(resultado).toEqual([
+      { id: 'editado', monto: 999 },
+      { id: 'otro', monto: 10 },
+      { id: 'nuevo', monto: 500 },
+    ]);
   });
 
   it('si la red falla usa el caché, y si el caché está vacío propaga el error', async () => {
@@ -69,6 +105,17 @@ describe('offlineQueryOne', () => {
 });
 
 describe('offlineMutation', () => {
+  it('con conexión pero con cambios del registro en la cola, encola para respetar el orden', async () => {
+    await addPendingSync('ordenes_trabajo', 'insert', { id: 'o1' });
+    const online = vi.fn();
+    const offline = vi.fn().mockResolvedValue('encolado');
+
+    const resultado = await offlineMutation({ online, offline, tabla: 'ordenes_trabajo' })('o1');
+
+    expect(resultado).toBe('encolado');
+    expect(online).not.toHaveBeenCalled();
+  });
+
   it('con conexión ejecuta online', async () => {
     const online = vi.fn().mockResolvedValue('ok');
     const offline = vi.fn();

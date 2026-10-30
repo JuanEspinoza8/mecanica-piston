@@ -82,6 +82,7 @@ export function useToggleNota() {
         return data;
       },
       offline: ({ id, completada }) => actualizarOffline('notas', id, { completada: !completada }),
+      tabla: 'notas',
     }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: NOTAS_KEYS.all });
@@ -111,6 +112,7 @@ export function useDeleteNota() {
         await borrarOffline('notas', id);
         return id;
       },
+      tabla: 'notas',
     }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: NOTAS_KEYS.all });

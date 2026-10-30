@@ -7,9 +7,11 @@ import {
   cacheData,
   clasificarError,
   clearLocalData,
+  deshacerAltaOffline,
   discardSyncError,
   getPendingCount,
   getSyncErrors,
+  MAX_FILAS_SERVIDOR,
   MAX_INTENTOS,
   offlineCascadeDelete,
   processPendingSyncs,
@@ -141,15 +143,48 @@ describe('processPendingSyncs', () => {
     expect(error.ultimoError).toMatch(/Ya existe.*patente/);
   });
 
-  it('no procesa nada sin sesión (RLS rechazaría todo)', async () => {
+  it('no procesa nada sin sesión (RLS rechazaría todo) y programa otro intento', async () => {
     await addPendingSync('clientes', 'insert', { id: 'c1' });
     estado.sesion = null;
 
     const resultado = await processPendingSyncs();
 
     expect(resultado).toMatchObject({ processed: 0, sinSesion: true });
+    expect(resultado.reintentarEn).toBeGreaterThan(Date.now());
     expect(estado.consultas).toHaveLength(0);
     expect(await getPendingCount()).toBe(1);
+  });
+
+  it('las operaciones de un registro con un error en la bandeja esperan', async () => {
+    await addPendingSync('vehiculos', 'insert', { id: 'v1', patente: 'AB 123 CD' });
+    await addPendingSync('vehiculos', 'update', { id: 'v1', modelo: 'Fiesta' });
+    await addPendingSync('notas', 'insert', { id: 'n1' });
+    estado.responder = (c) => c.tabla === 'vehiculos' && c.op === 'insert'
+      ? { data: null, error: { code: '23514', message: 'check' }, status: 400 }
+      : { data: c.op === 'update' ? [{ id: 'v1' }] : null, error: null, status: 200 };
+
+    const resultado = await processPendingSyncs();
+
+    // El update de v1 no se manda: el alta falló y se perdería el cambio
+    expect(operacionesEnviadas()).toEqual(['insert vehiculos', 'insert notas']);
+    expect(resultado).toMatchObject({ processed: 1, errores: 1 });
+    const [pendiente] = await db.pending_sync.where('estado').equals('pendiente').toArray();
+    expect(pendiente).toMatchObject({ tabla: 'vehiculos', operacion: 'update' });
+  });
+
+  it('un update que no encuentra la fila va a la bandeja en vez de darse por hecho', async () => {
+    await addPendingSync('clientes', 'update', { id: 'borrado', telefono: '123' });
+    estado.responder = () => ({ data: [], error: null, status: 200 });
+
+    const resultado = await processPendingSyncs();
+
+    expect(resultado.errores).toBe(1);
+    const [error] = await getSyncErrors();
+    expect(error.ultimoError).toMatch(/ya no existe en el servidor/);
+  });
+
+  it('un error sin status que no es de red cuenta como intento', () => {
+    expect(clasificarError(new TypeError("Cannot read properties of undefined (reading 'id')"))).toBe('transitorio');
   });
 
   it('dos llamadas en paralelo comparten el mismo procesamiento (lock)', async () => {
@@ -160,6 +195,24 @@ describe('processPendingSyncs', () => {
 
     expect(a).toBe(b);
     expect(operacionesEnviadas()).toEqual(['insert clientes', 'insert clientes']);
+  });
+
+  it('lo que se encola durante un procesamiento se manda en la misma corrida', async () => {
+    await addPendingSync('clientes', 'insert', { id: 'c1' });
+    let encolado = false;
+    estado.responder = (c) => {
+      if (!encolado) {
+        encolado = true;
+        // Llega otra operación mientras se procesa la primera
+        addPendingSync('clientes', 'insert', { id: 'c2' }).then(() => processPendingSyncs());
+      }
+      return { data: null, error: null, status: 201, consulta: c };
+    };
+
+    const resultado = await processPendingSyncs();
+
+    expect(resultado.processed).toBe(2);
+    expect(await getPendingCount()).toBe(0);
   });
 
   it('sube un archivo encolado offline y guarda la ruta en el registro', async () => {
@@ -240,6 +293,16 @@ describe('cacheData (reconciliación)', () => {
     ]);
   });
 
+  it('no borra nada si la respuesta pudo venir cortada por el límite de filas', async () => {
+    await db.repuestos.put({ id: 'viejo' });
+    const muchos = Array.from({ length: MAX_FILAS_SERVIDOR }, (_, i) => ({ id: `r${i}` }));
+
+    await cacheData('repuestos', muchos);
+
+    expect(await db.repuestos.get('viejo')).toBeDefined();
+    expect(await db.repuestos.count()).toBe(MAX_FILAS_SERVIDOR + 1);
+  });
+
   it('con alcance false (consulta parcial) guarda sin borrar', async () => {
     await db.historial_modificaciones.bulkPut([{ id: 'h1', vehiculo_id: 'v1' }]);
 
@@ -274,6 +337,21 @@ describe('offlineCascadeDelete', () => {
 
     expect(await db.deudas.count()).toBe(0);
     expect((await db.pagos.get('p1')).deuda_id).toBeNull();
+  });
+});
+
+describe('deshacerAltaOffline', () => {
+  it('saca de la cola todas las operaciones del registro y su copia local', async () => {
+    await db.pagos.put({ id: 'p1' });
+    await addPendingSync('pagos', 'insert', { id: 'p1' });
+    await addPendingSync('pagos', 'upload', { id: 'p1', path: 'c1/p1.pdf' });
+    await addPendingSync('notas', 'insert', { id: 'n1' });
+
+    await deshacerAltaOffline('pagos', 'p1');
+
+    expect(await db.pagos.count()).toBe(0);
+    const restantes = await db.pending_sync.toArray();
+    expect(restantes.map(op => op.tabla)).toEqual(['notas']);
   });
 });
 

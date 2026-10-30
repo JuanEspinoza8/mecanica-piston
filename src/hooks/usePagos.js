@@ -1,8 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
 import { toast } from 'sonner';
-import { addPendingUpload, cacheOne, generateId, getCachedById, getCachedByIndex, getCachedData, isOnline, removeCached } from '../db/offlineService';
-import { BUCKET_COMPROBANTES, SIGNED_URL_STALE_TIME, comprobantePath, getSignedUrls } from '../lib/storage';
+import { addPendingUpload, cacheOne, deshacerAltaOffline, generateId, getCachedById, getCachedByIndex, getCachedData, isOnline, removeCached } from '../db/offlineService';
+import { BUCKET_COMPROBANTES, SIGNED_URL_REFRESH_MS, comprobantePath, getSignedUrls } from '../lib/storage';
 import { offlineQuery, offlineMutation, insertarOffline, borrarOffline } from './offlineHelpers';
 import { DEUDAS_KEYS } from './useDeudas';
 
@@ -50,7 +50,8 @@ export function usePagos(clienteId) {
       alcance: { campo: 'cliente_id', valor: clienteId },
     }),
     enabled: !!clienteId,
-    staleTime: SIGNED_URL_STALE_TIME,
+    // Renueva las URLs firmadas mientras la pantalla siga abierta
+    refetchInterval: SIGNED_URL_REFRESH_MS,
   });
 }
 
@@ -131,7 +132,7 @@ export function useCreatePago() {
       },
       offline: async (variables) => {
         const { archivoPDF, rutaComprobante, payload } = prepararPago(variables);
-        const deuda = await ajustarDeudaLocal(payload.deuda_id, payload.monto);
+        const deuda = payload.deuda_id ? await getCachedById('deudas', payload.deuda_id) : null;
 
         const pagoLocal = await insertarOffline('pagos', payload, {
           comprobante_pendiente: !!archivoPDF,
@@ -144,17 +145,29 @@ export function useCreatePago() {
           } : null,
         });
 
-        // El PDF se guarda en IndexedDB y se sube después del insert del pago
+        // El PDF se guarda en IndexedDB y se sube después del insert del pago.
+        // Si no entra (por ejemplo, sin espacio), se deshace el pago entero:
+        // si no, al reintentar quedaría cargado dos veces.
         if (archivoPDF) {
-          await addPendingUpload({
-            tabla: 'pagos',
-            registroId: payload.id,
-            campo: 'comprobante_url',
-            bucket: BUCKET_COMPROBANTES,
-            path: rutaComprobante,
-            file: archivoPDF,
-          });
+          try {
+            await addPendingUpload({
+              tabla: 'pagos',
+              registroId: payload.id,
+              campo: 'comprobante_url',
+              bucket: BUCKET_COMPROBANTES,
+              path: rutaComprobante,
+              file: archivoPDF,
+            });
+          } catch (error) {
+            await deshacerAltaOffline('pagos', payload.id);
+            throw new Error(
+              'No se pudo guardar el comprobante sin conexión. Probá sin adjuntarlo o esperá a tener conexión.',
+              { cause: error }
+            );
+          }
         }
+
+        await ajustarDeudaLocal(payload.deuda_id, payload.monto);
         return pagoLocal;
       },
       aviso: ({ archivoPDF }) => (archivoPDF
@@ -205,6 +218,7 @@ export function useDeletePago() {
         return { id, cliente_id };
       },
       aviso: 'Eliminación pendiente de sincronizar',
+      tabla: 'pagos',
     }),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['pagos', data.cliente_id] });
