@@ -1,6 +1,7 @@
 import { useEffect, useCallback, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { processPendingSyncs, getPendingCount, getSyncErrorCount, subscribeQueue } from '../db/offlineService';
+import { supabase } from '../lib/supabase';
 import useAppStore from '../store/useAppStore';
 import { toast } from 'sonner';
 
@@ -9,7 +10,7 @@ const plural = (n, singular, pluralForm) => `${n} ${n === 1 ? singular : pluralF
 /**
  * Hook de sincronización offline.
  *
- * - Al montar y al reconectar, procesa la cola de pendientes
+ * - Al montar, al reconectar y al renovarse la sesión, procesa la cola
  * - Si una operación falla por un problema momentáneo, programa el reintento
  * - Mantiene en Zustand los contadores de pendientes y de errores
  * - Se monta UNA SOLA VEZ en App.jsx (el lock contra ejecuciones en paralelo
@@ -24,6 +25,9 @@ export function useOfflineSync() {
   // Última versión de handleSync, para que el timer de reintento la llame
   // sin que la función se referencie a sí misma.
   const handleSyncRef = useRef(null);
+  // Si ya hay una sincronización en curso, la nueva llamada solo le pide otra
+  // vuelta: los avisos los muestra la que empezó (así no salen duplicados).
+  const sincronizando = useRef(false);
 
   const refreshCounts = useCallback(async () => {
     const [pendientes, errores] = await Promise.all([getPendingCount(), getSyncErrorCount()]);
@@ -38,7 +42,18 @@ export function useOfflineSync() {
     const count = await getPendingCount();
     if (count === 0) return;
 
-    const result = await processPendingSyncs({ ignorarEspera });
+    if (sincronizando.current) {
+      processPendingSyncs({ ignorarEspera });
+      return;
+    }
+
+    sincronizando.current = true;
+    let result;
+    try {
+      result = await processPendingSyncs({ ignorarEspera });
+    } finally {
+      sincronizando.current = false;
+    }
 
     if (result.processed > 0) {
       // Invalidar todos los queries para refrescar datos
@@ -80,8 +95,18 @@ export function useOfflineSync() {
     window.addEventListener('online', handleOnline);
     handleSync();
 
+    // Si al reconectar falló el refresh del token, la cola espera; cuando la
+    // sesión se renueva se procesa enseguida. (setTimeout: Supabase pide no
+    // llamar a sus funciones dentro del callback de onAuthStateChange.)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'TOKEN_REFRESHED' || event === 'SIGNED_IN') {
+        setTimeout(() => handleSyncRef.current?.({ ignorarEspera: true }), 0);
+      }
+    });
+
     return () => {
       window.removeEventListener('online', handleOnline);
+      subscription.unsubscribe();
       clearTimeout(retryTimer.current);
     };
   }, [handleSync, isAuthenticated]);
