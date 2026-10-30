@@ -45,24 +45,11 @@ export default defineConfig({
         // Pre-cache: se incluyen automáticamente todos los assets del build
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
         
-        // Runtime caching: estrategias para requests dinámicos
+        // Runtime caching: estrategias para requests dinámicos.
+        // Las consultas a la API de Supabase (/rest/v1) no se cachean acá: el
+        // modo offline lo resuelve IndexedDB, y una respuesta vieja servida por
+        // el service worker se tomaría como dato actual del servidor.
         runtimeCaching: [
-          {
-            // API calls a Supabase: NetworkFirst con fallback a cache
-            urlPattern: /^https:\/\/.*\.supabase\.co\/rest\/v1\/.*/i,
-            handler: 'NetworkFirst',
-            options: {
-              cacheName: 'supabase-api-cache',
-              expiration: {
-                maxEntries: 100,
-                maxAgeSeconds: 60 * 60 * 24 * 7, // 7 días
-              },
-              cacheableResponse: {
-                statuses: [0, 200],
-              },
-              networkTimeoutSeconds: 5,
-            },
-          },
           {
             // Supabase Storage (imágenes y PDFs): CacheFirst
             urlPattern: /^https:\/\/.*\.supabase\.co\/storage\/.*/i,
@@ -73,8 +60,11 @@ export default defineConfig({
                 maxEntries: 200,
                 maxAgeSeconds: 60 * 60 * 24 * 30, // 30 días
               },
+              // Solo respuestas OK. Las imágenes se piden con crossOrigin para
+              // que la respuesta no sea opaca: así un error (por ejemplo, una
+              // URL vencida) no queda guardado como si fuera la foto.
               cacheableResponse: {
-                statuses: [0, 200],
+                statuses: [200],
               },
               plugins: [
                 {

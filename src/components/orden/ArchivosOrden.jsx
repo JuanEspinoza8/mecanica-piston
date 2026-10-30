@@ -64,7 +64,7 @@ export default function ArchivosOrden({ ordenId }) {
             onClick={() => setViewerIndex(index)}
             className="aspect-square rounded-xl overflow-hidden border border-neutral-200 dark:border-neutral-700 cursor-pointer group relative"
           >
-            <img src={foto.url} alt={foto.nombre_archivo} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300" />
+            <img src={foto.url} alt={foto.nombre_archivo} crossOrigin="anonymous" className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300" />
             <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
               <span className="text-white text-xs font-bold px-2 text-center truncate w-full">{foto.nombre_archivo}</span>
             </div>

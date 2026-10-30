@@ -16,6 +16,10 @@ const queryClient = new QueryClient({
   },
 })
 
+// Las versiones anteriores guardaban respuestas de la API en esta caché del
+// service worker. Ya no se usa: se borra para no dejar datos viejos.
+if ('caches' in window) caches.delete('supabase-api-cache');
+
 createRoot(document.getElementById('root')).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>

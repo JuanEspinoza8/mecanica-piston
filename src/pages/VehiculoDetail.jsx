@@ -202,7 +202,7 @@ export default function VehiculoDetail() {
                     onClick={() => setViewerIndex(idx)}
                     className="aspect-square rounded-xl overflow-hidden cursor-pointer border border-neutral-200 dark:border-neutral-800 hover:border-red-400 transition-all hover:shadow-md group relative"
                   >
-                    <img src={foto.url} alt="" className="w-full h-full object-cover" loading="lazy" />
+                    <img src={foto.url} alt="" crossOrigin="anonymous" className="w-full h-full object-cover" loading="lazy" />
                     <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors" />
                     <span className="absolute bottom-1 left-1 text-[8px] font-bold text-white bg-black/60 px-1.5 py-0.5 rounded-full">
                       {foto.displayOrdenId}

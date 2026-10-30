@@ -57,7 +57,7 @@ export default function ImageViewerModal({ images, initialIndex = 0, onClose }) 
         onClick={(e) => e.stopPropagation()} // Evita cerrar al hacer clic en la imagen
       >
         <img 
-          src={imagen.url} 
+          src={imagen.url} crossOrigin="anonymous" 
           alt={imagen.titulo || 'Evidencia fotográfica'} 
           className="max-w-full max-h-full object-contain rounded-lg shadow-2xl"
         />
