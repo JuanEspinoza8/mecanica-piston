@@ -15,7 +15,7 @@ const masNuevoPrimero = (a, b) => new Date(b.created_at) - new Date(a.created_at
 
 // El bucket es privado: cada archivo se muestra con una URL firmada que se
 // guarda también en el caché local para poder usarla sin conexión.
-export async function conUrlsFirmadas(archivos) {
+async function conUrlsFirmadas(archivos) {
   const urls = await getSignedUrls(BUCKET_ARCHIVOS, archivos.map(a => a.ruta_storage));
   return archivos.map(a => ({ ...a, url: urls[a.ruta_storage] || null }));
 }
