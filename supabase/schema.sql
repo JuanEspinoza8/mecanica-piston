@@ -1,20 +1,14 @@
 -- Supabase Schema para Mecánica Pistón
+--
+-- Crea la base completa desde cero, ya en el estado final (políticas RLS,
+-- buckets privados, triggers). Para una base que ya está en producción NO uses
+-- este archivo: aplicá las migraciones de supabase/migrations en orden
+-- (ver README → "Base de datos").
 
 -- ==============================================================================
 -- ⚠️ PELIGRO: ESTAS LÍNEAS BORRAN TODAS LAS TABLAS EXISTENTES.
 -- Usar solo para inicializar o hacer hard-reset de la base de datos.
 -- ==============================================================================
-DROP POLICY IF EXISTS "Permitir todo a todos temporalmente" ON public.clientes;
-DROP POLICY IF EXISTS "Permitir todo a todos temporalmente" ON public.vehiculos;
-DROP POLICY IF EXISTS "Permitir todo a todos temporalmente" ON public.ordenes_trabajo;
-DROP POLICY IF EXISTS "Permitir todo a todos temporalmente" ON public.repuestos;
-DROP POLICY IF EXISTS "Permitir todo a todos temporalmente" ON public.pagos;
-DROP POLICY IF EXISTS "Permitir todo a todos temporalmente" ON public.notas;
-DROP POLICY IF EXISTS "Permitir todo a todos temporalmente" ON public.historial_modificaciones;
-DROP POLICY IF EXISTS "Permitir todo a todos temporalmente" ON public.archivos;
-DROP POLICY IF EXISTS "Permitir todo a todos temporalmente" ON public.tareas_orden;
-DROP POLICY IF EXISTS "Permitir todo a todos temporalmente" ON public.deudas;
-
 DROP FUNCTION IF EXISTS public.get_saldo_cliente(UUID) CASCADE;
 
 DROP TABLE IF EXISTS public.archivos CASCADE;
@@ -146,9 +140,14 @@ CREATE TABLE public.archivos (
 -- FUNCIONES RPC
 -- ==============================================================================
 
--- Función para obtener el saldo de un cliente (basada en deudas)
+-- Función para obtener el saldo de un cliente (basada en deudas).
+-- SECURITY INVOKER: respeta RLS, así que solo devuelve datos a quien puede verlos.
 CREATE OR REPLACE FUNCTION public.get_saldo_cliente(p_cliente_id UUID)
-RETURNS DECIMAL AS $$
+RETURNS DECIMAL
+LANGUAGE plpgsql
+SECURITY INVOKER
+SET search_path = public
+AS $$
 BEGIN
     -- Saldo = suma de (monto_total - monto_pagado) de deudas no pagadas
     RETURN COALESCE((
@@ -158,34 +157,69 @@ BEGIN
           AND estado != 'pagada'
     ), 0);
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.get_saldo_cliente(UUID) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.get_saldo_cliente(UUID) TO authenticated;
 
 -- ==============================================================================
 -- SEGURIDAD Y RLS
+--
+-- Solo usuarios con sesión acceden a los datos. Requisito: el registro público
+-- tiene que estar deshabilitado (Authentication → Sign In / Providers →
+-- "Allow new users to sign up"). Para restringir además a una lista de
+-- usuarios, ver supabase/migrations/006_usuarios_autorizados.sql.
 -- ==============================================================================
 
-ALTER TABLE public.clientes ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.vehiculos ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.ordenes_trabajo ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.repuestos ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.tareas_orden ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.pagos ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.deudas ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.notas ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.historial_modificaciones ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.archivos ENABLE ROW LEVEL SECURITY;
+DO $$
+DECLARE
+  t TEXT;
+BEGIN
+  FOREACH t IN ARRAY ARRAY[
+    'clientes', 'vehiculos', 'ordenes_trabajo', 'tareas_orden', 'repuestos',
+    'deudas', 'pagos', 'notas', 'historial_modificaciones', 'archivos'
+  ] LOOP
+    EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', t);
+    EXECUTE format(
+      'CREATE POLICY "Acceso autenticado" ON public.%I
+         FOR ALL TO authenticated
+         USING (true) WITH CHECK (true)',
+      t
+    );
+  END LOOP;
+END $$;
 
--- Políticas temporales (Permitir todo para desarrollo, luego se ajustará con Auth)
-CREATE POLICY "Permitir todo a todos temporalmente" ON public.clientes FOR ALL USING (true);
-CREATE POLICY "Permitir todo a todos temporalmente" ON public.vehiculos FOR ALL USING (true);
-CREATE POLICY "Permitir todo a todos temporalmente" ON public.ordenes_trabajo FOR ALL USING (true);
-CREATE POLICY "Permitir todo a todos temporalmente" ON public.repuestos FOR ALL USING (true);
-CREATE POLICY "Permitir todo a todos temporalmente" ON public.tareas_orden FOR ALL USING (true);
-CREATE POLICY "Permitir todo a todos temporalmente" ON public.pagos FOR ALL USING (true);
-CREATE POLICY "Permitir todo a todos temporalmente" ON public.deudas FOR ALL USING (true);
-CREATE POLICY "Permitir todo a todos temporalmente" ON public.notas FOR ALL USING (true);
-CREATE POLICY "Permitir todo a todos temporalmente" ON public.historial_modificaciones FOR ALL USING (true);
-CREATE POLICY "Permitir todo a todos temporalmente" ON public.archivos FOR ALL USING (true);
+-- ==============================================================================
+-- STORAGE
+--
+-- Buckets privados: el front pide URLs firmadas (createSignedUrl), así que un
+-- comprobante o una foto no se abren sin sesión aunque alguien tenga el link.
+-- ==============================================================================
+
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('archivos', 'archivos', false), ('archivos_pagos', 'archivos_pagos', false)
+ON CONFLICT (id) DO UPDATE SET public = EXCLUDED.public;
+
+DROP POLICY IF EXISTS "Archivos del taller: lectura" ON storage.objects;
+CREATE POLICY "Archivos del taller: lectura" ON storage.objects
+  FOR SELECT TO authenticated
+  USING (bucket_id IN ('archivos', 'archivos_pagos'));
+
+DROP POLICY IF EXISTS "Archivos del taller: subida" ON storage.objects;
+CREATE POLICY "Archivos del taller: subida" ON storage.objects
+  FOR INSERT TO authenticated
+  WITH CHECK (bucket_id IN ('archivos', 'archivos_pagos'));
+
+DROP POLICY IF EXISTS "Archivos del taller: reemplazo" ON storage.objects;
+CREATE POLICY "Archivos del taller: reemplazo" ON storage.objects
+  FOR UPDATE TO authenticated
+  USING (bucket_id IN ('archivos', 'archivos_pagos'))
+  WITH CHECK (bucket_id IN ('archivos', 'archivos_pagos'));
+
+DROP POLICY IF EXISTS "Archivos del taller: borrado" ON storage.objects;
+CREATE POLICY "Archivos del taller: borrado" ON storage.objects
+  FOR DELETE TO authenticated
+  USING (bucket_id IN ('archivos', 'archivos_pagos'));
 
 -- ==============================================================================
 -- TRIGGERS PARA HISTORIAL DE MODIFICACIONES
@@ -203,7 +237,7 @@ BEGIN
   );
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
 -- Función: registrar cambio de estado de orden
 CREATE OR REPLACE FUNCTION public.trg_historial_orden_estado()
@@ -223,7 +257,7 @@ BEGIN
   END IF;
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
 -- Función: registrar agregado de repuesto
 CREATE OR REPLACE FUNCTION public.trg_historial_repuesto_agregado()
@@ -240,7 +274,7 @@ BEGIN
   );
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
 -- Función: registrar eliminación de repuesto
 CREATE OR REPLACE FUNCTION public.trg_historial_repuesto_eliminado()
@@ -257,7 +291,7 @@ BEGIN
   );
   RETURN OLD;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
 -- Crear los triggers
 DROP TRIGGER IF EXISTS trg_orden_creada ON public.ordenes_trabajo;
@@ -279,3 +313,4 @@ DROP TRIGGER IF EXISTS trg_repuesto_eliminado ON public.repuestos;
 CREATE TRIGGER trg_repuesto_eliminado
   AFTER DELETE ON public.repuestos
   FOR EACH ROW EXECUTE FUNCTION public.trg_historial_repuesto_eliminado();
+
