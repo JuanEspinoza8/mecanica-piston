@@ -88,8 +88,9 @@ export async function removeCached(tabla, id) {
 }
 
 /**
- * Borra en cascada registros asociados en la caché local (IndexedDB).
- * No agrega operaciones a pending_sync (Supabase ya tiene ON DELETE CASCADE o los hooks se encargan de agregar el padre).
+ * Replica en la caché local (IndexedDB) lo que hacen las foreign keys de
+ * Postgres al borrar un registro: CASCADE borra los hijos y SET NULL los
+ * desvincula. No encola nada: en el servidor lo resuelven las foreign keys.
  */
 export async function offlineCascadeDelete(tabla, id) {
   try {
@@ -108,11 +109,13 @@ export async function offlineCascadeDelete(tabla, id) {
       for (const o of ordenes) await offlineCascadeDelete('ordenes_trabajo', o.id);
     }
     else if (tabla === 'ordenes_trabajo') {
+      // Igual que en Postgres (ON DELETE SET NULL): las deudas y los pagos
+      // del cliente se conservan, solo pierden el vínculo con la orden.
       const deudas = await getCachedByIndex('deudas', 'orden_id', id);
-      for (const d of deudas) await offlineCascadeDelete('deudas', d.id);
+      for (const d of deudas) await cacheOne('deudas', { ...d, orden_id: null, ordenes_trabajo: null });
 
       const pagos = await getCachedByIndex('pagos', 'orden_id', id);
-      for (const p of pagos) await offlineCascadeDelete('pagos', p.id);
+      for (const p of pagos) await cacheOne('pagos', { ...p, orden_id: null });
 
       const tareas = await getCachedByIndex('tareas_orden', 'orden_id', id);
       for (const t of tareas) await offlineCascadeDelete('tareas_orden', t.id);
@@ -161,6 +164,28 @@ export async function addPendingSync(tabla, operacion, datos) {
  */
 export async function addPendingUpload({ tabla, registroId, campo, bucket, path, file }) {
   await addPendingSync(tabla, 'upload', { id: registroId, campo, bucket, path, file });
+}
+
+/**
+ * Borra una orden en Supabase. Las foreign keys se encargan del resto: tareas,
+ * repuestos y archivos se borran (CASCADE) y las deudas y pagos quedan sin
+ * orden (SET NULL). Los archivos de Storage no tienen foreign key, así que se
+ * borran a mano; si eso falla, la orden igual queda borrada.
+ */
+export async function deleteOrdenEnServidor(id) {
+  const { data: archivos } = await supabase
+    .from('archivos')
+    .select('ruta_storage')
+    .eq('orden_id', id);
+
+  const { error } = await supabase.from('ordenes_trabajo').delete().eq('id', id);
+  if (error) throw error;
+
+  const rutas = (archivos || []).map(a => a.ruta_storage).filter(Boolean);
+  if (rutas.length > 0) {
+    const { error: storageError } = await supabase.storage.from('archivos').remove(rutas);
+    if (storageError) console.warn('[Ordenes] No se pudieron borrar los archivos de Storage:', storageError);
+  }
 }
 
 /**
@@ -233,13 +258,9 @@ async function executeSyncOperation(item) {
     }
     case 'delete': {
       if (tabla === 'ordenes_trabajo') {
-        await supabase.from('deudas').delete().eq('orden_id', datos.id);
-        await supabase.from('pagos').delete().eq('orden_id', datos.id);
-        await supabase.from('tareas_orden').delete().eq('orden_id', datos.id);
-        await supabase.from('repuestos').delete().eq('orden_id', datos.id);
-        await supabase.from('archivos').delete().eq('orden_id', datos.id);
+        await deleteOrdenEnServidor(datos.id);
+        break;
       }
-
       const { error } = await supabase.from(tabla).delete().eq('id', datos.id);
       if (error) throw error;
       break;

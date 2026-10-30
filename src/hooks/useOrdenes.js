@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
-import { cacheData, cacheOne, getCachedData, getCachedById, getCachedByIndex, removeCached, offlineCascadeDelete, addPendingSync, isOnline, getPendingCount, generateId } from '../db/offlineService';
+import { cacheData, cacheOne, getCachedData, getCachedById, getCachedByIndex, removeCached, offlineCascadeDelete, deleteOrdenEnServidor, addPendingSync, isOnline, getPendingCount, generateId } from '../db/offlineService';
 import useAppStore from '../store/useAppStore';
 import { toast } from 'sonner';
 
@@ -240,23 +240,10 @@ export function useDeleteOrden() {
         return id;
       }
 
-      // Eliminar deudas y pagos asociados a la orden
-      await supabase.from('deudas').delete().eq('orden_id', id);
-      await supabase.from('pagos').delete().eq('orden_id', id);
-
-      // Eliminar dependencias
-      await supabase.from('tareas_orden').delete().eq('orden_id', id);
-      await supabase.from('repuestos').delete().eq('orden_id', id);
-      // Los archivos almacenados en Storage no se borran automáticamente, pero sí el registro
-      await supabase.from('archivos').delete().eq('orden_id', id);
-
-      // Finalmente eliminar la orden
-      const { error } = await supabase
-        .from('ordenes_trabajo')
-        .delete()
-        .eq('id', id);
-      if (error) throw error;
-      await removeCached('ordenes_trabajo', id);
+      // Tareas, repuestos y archivos se borran por CASCADE; deudas y pagos
+      // se conservan sin orden (SET NULL).
+      await deleteOrdenEnServidor(id);
+      await offlineCascadeDelete('ordenes_trabajo', id);
       return id;
     },
     onSuccess: () => {
