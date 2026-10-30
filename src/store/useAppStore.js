@@ -30,7 +30,9 @@ const useAppStore = create(
     }),
     {
       name: 'mecanica-piston-storage',
-      partialize: (state) => ({ theme: state.theme }),
+      // El usuario se recuerda para poder abrir la app sin conexión con el
+      // token vencido (ver ProtectedRoute). Al cerrar sesión queda en null.
+      partialize: (state) => ({ theme: state.theme, user: state.user }),
     }
   )
 );

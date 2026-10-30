@@ -7,6 +7,7 @@ import useAppStore from '../store/useAppStore';
 import GlobalSearch from './GlobalSearch';
 import SyncErrorsPanel from './SyncErrorsPanel';
 import ConfirmModal from './ConfirmModal';
+import { toast } from 'sonner';
 import { supabase } from '../lib/supabase';
 import { clearLocalData } from '../db/offlineService';
 
@@ -24,7 +25,16 @@ export default function Layout({ children }) {
   // caché del service worker y de TanStack Query) para que la próxima persona
   // que use el equipo no vea los datos del taller.
   const handleLogout = async () => {
-    await supabase.auth.signOut();
+    setConfirmLogout(false);
+    // scope 'local': cierra solo este dispositivo (por defecto Supabase cierra
+    // la sesión en todos los dispositivos de la cuenta).
+    const { error } = await supabase.auth.signOut({ scope: 'local' });
+    if (error) {
+      // Si falla, la sesión sigue guardada: no se borran los datos locales
+      // para no dejar la app abierta y vacía.
+      toast.error('No se pudo cerrar la sesión. Revisá la conexión.');
+      return;
+    }
     await clearLocalData();
     queryClient.clear();
     clearAuth();
@@ -32,6 +42,10 @@ export default function Layout({ children }) {
   };
 
   const requestLogout = () => {
+    if (!navigator.onLine) {
+      toast.error('Para cerrar sesión necesitás conexión.');
+      return;
+    }
     if (cambiosSinSincronizar > 0) setConfirmLogout(true);
     else handleLogout();
   };
