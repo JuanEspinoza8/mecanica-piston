@@ -35,13 +35,14 @@ export const ordenSchema = z.object({
     .or(z.literal('')),
   fecha_ingreso: z.string().optional(),
   estado: z.enum(['Pendiente', 'En proceso', 'Esperando repuesto', 'Terminado', 'Entregado'], {
-    errorMap: () => ({ message: 'Seleccione un estado válido' })
+    error: 'Seleccione un estado válido'
   }).optional(),
 });
 
 // Esquema de validación para Vehículos
 export const vehiculoSchema = z.object({
   patente: z.string()
+    .trim()
     .min(6, 'La patente debe tener al menos 6 caracteres')
     .max(10, 'Patente demasiado larga')
     .transform(val => {
@@ -81,7 +82,7 @@ export const pagoSchema = z.object({
     .refine(val => !isNaN(val) && val > 0, { message: 'El monto debe ser mayor a 0' }),
   fecha: z.string().min(1, 'La fecha es obligatoria'),
   metodo: z.enum(['Efectivo', 'Mercado Pago', 'Transferencia', 'Tarjeta'], {
-    errorMap: () => ({ message: 'Seleccione un método de pago válido' })
+    error: 'Seleccione un método de pago válido'
   }),
   nota: z.string().max(200, 'La nota es demasiado larga').optional(),
 });
