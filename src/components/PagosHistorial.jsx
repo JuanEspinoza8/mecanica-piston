@@ -92,16 +92,24 @@ export default function PagosHistorial({ clienteId }) {
                   ${Number(pago.monto).toLocaleString('es-AR')}
                 </span>
                 <div className="flex items-center gap-2">
-                  {pago.comprobante_url && (
-                    <a 
-                      href={pago.comprobante_url} 
-                      target="_blank" 
+                  {pago.comprobante_signed_url ? (
+                    <a
+                      href={pago.comprobante_signed_url}
+                      target="_blank"
                       rel="noopener noreferrer"
                       className="flex items-center text-xs font-bold text-neutral-600 dark:text-neutral-400 hover:text-black dark:hover:text-white transition-colors bg-neutral-100 dark:bg-neutral-800 px-2 py-1 rounded"
                     >
                       <Download className="w-3 h-3 mr-1" />
                       PDF
                     </a>
+                  ) : pago.comprobante_url && (
+                    <span
+                      className="flex items-center text-xs font-bold text-neutral-400 dark:text-neutral-500 bg-neutral-100 dark:bg-neutral-800 px-2 py-1 rounded"
+                      title="El comprobante se puede abrir con conexión"
+                    >
+                      <Download className="w-3 h-3 mr-1" />
+                      PDF
+                    </span>
                   )}
                   <button
                     onClick={() => setDeleteTarget(pago)}

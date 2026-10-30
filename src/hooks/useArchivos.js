@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
 import imageCompression from 'browser-image-compression';
 import { cacheData, getCachedByIndex, isOnline } from '../db/offlineService';
+import { BUCKET_ARCHIVOS, SIGNED_URL_STALE_TIME, getSignedUrls } from '../lib/storage';
 import { toast } from 'sonner';
 
 export const ARCHIVOS_KEYS = {
@@ -9,15 +10,20 @@ export const ARCHIVOS_KEYS = {
   orden: (ordenId) => ['archivos', 'orden', ordenId],
 };
 
+// El bucket es privado: cada archivo se muestra con una URL firmada que se
+// guarda también en el caché local para poder usarla sin conexión.
+async function conUrlsFirmadas(archivos) {
+  const urls = await getSignedUrls(BUCKET_ARCHIVOS, archivos.map(a => a.ruta_storage));
+  return archivos.map(a => ({ ...a, url: urls[a.ruta_storage] || null }));
+}
+
 export function useArchivos(ordenId) {
   return useQuery({
     queryKey: ARCHIVOS_KEYS.orden(ordenId),
     queryFn: async () => {
       if (!ordenId) return [];
       if (!isOnline()) {
-        const cached = await getCachedByIndex('archivos', 'orden_id', ordenId);
-        // URLs won't work offline but at least metadata is available
-        return cached.map(a => ({ ...a, url: a.ruta_storage || '' }));
+        return getCachedByIndex('archivos', 'orden_id', ordenId);
       }
       try {
         const { data, error } = await supabase
@@ -27,23 +33,18 @@ export function useArchivos(ordenId) {
           .order('created_at', { ascending: false });
           
         if (error) throw error;
-        
-        // Cache for offline
-        await cacheData('archivos', data);
 
-        return data.map(archivo => {
-          const { data: publicUrlData } = supabase.storage
-            .from('archivos')
-            .getPublicUrl(archivo.ruta_storage);
-          return { ...archivo, url: publicUrlData.publicUrl };
-        });
+        const archivos = await conUrlsFirmadas(data);
+        await cacheData('archivos', archivos);
+        return archivos;
       } catch (err) {
         const cached = await getCachedByIndex('archivos', 'orden_id', ordenId);
-        if (cached && cached.length > 0) return cached.map(a => ({ ...a, url: a.ruta_storage || '' }));
+        if (cached && cached.length > 0) return cached;
         throw err;
       }
     },
     enabled: !!ordenId,
+    staleTime: SIGNED_URL_STALE_TIME,
   });
 }
 
@@ -72,26 +73,22 @@ export function useArchivosVehiculo(vehiculoId) {
           .order('created_at', { ascending: false });
         if (error) throw error;
 
-        await cacheData('archivos', data);
+        const archivos = await conUrlsFirmadas(data);
+        await cacheData('archivos', archivos);
 
         const ordenMap = Object.fromEntries(ordenes.map(o => [o.id, o.descripcion]));
-        return data.map(archivo => {
-          const { data: publicUrlData } = supabase.storage
-            .from('archivos')
-            .getPublicUrl(archivo.ruta_storage);
-          return {
-            ...archivo,
-            url: publicUrlData.publicUrl,
-            ordenDescripcion: ordenMap[archivo.orden_id] || '',
-            displayOrdenId: `ORD-${archivo.orden_id.substring(0, 4).toUpperCase()}`,
-          };
-        });
+        return archivos.map(archivo => ({
+          ...archivo,
+          ordenDescripcion: ordenMap[archivo.orden_id] || '',
+          displayOrdenId: `ORD-${archivo.orden_id.substring(0, 4).toUpperCase()}`,
+        }));
       } catch (err) {
         // Fallback for offline if network request fails despite isOnline() being true
         return [];
       }
     },
     enabled: !!vehiculoId,
+    staleTime: SIGNED_URL_STALE_TIME,
   });
 }
 

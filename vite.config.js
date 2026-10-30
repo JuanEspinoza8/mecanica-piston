@@ -76,6 +76,18 @@ export default defineConfig({
               cacheableResponse: {
                 statuses: [0, 200],
               },
+              plugins: [
+                {
+                  // Las URLs firmadas traen un `token` distinto cada vez que se
+                  // generan. Se guardan en caché sin él, así una foto ya vista
+                  // se sigue mostrando offline aunque su URL haya vencido.
+                  cacheKeyWillBeUsed: async ({ request }) => {
+                    const url = new URL(request.url);
+                    url.searchParams.delete('token');
+                    return url.href;
+                  },
+                },
+              ],
             },
           },
           {

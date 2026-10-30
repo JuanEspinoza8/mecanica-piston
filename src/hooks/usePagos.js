@@ -3,7 +3,15 @@ import { supabase } from '../lib/supabase';
 import { toast } from 'sonner';
 import { cacheData, cacheOne, getCachedByIndex, getCachedById, addPendingSync, removeCached, isOnline, getPendingCount, generateId } from '../db/offlineService';
 import useAppStore from '../store/useAppStore';
+import { BUCKET_COMPROBANTES, SIGNED_URL_STALE_TIME, comprobantePath, getSignedUrls } from '../lib/storage';
 import { DEUDAS_KEYS } from './useDeudas';
+
+// El bucket de comprobantes es privado: se firma una URL por cada pago que
+// tenga comprobante. Sin conexión no hay URL y el PDF no se puede abrir.
+async function conComprobantesFirmados(pagos) {
+  const urls = await getSignedUrls(BUCKET_COMPROBANTES, pagos.map(p => comprobantePath(p.comprobante_url)));
+  return pagos.map(p => ({ ...p, comprobante_signed_url: urls[comprobantePath(p.comprobante_url)] || null }));
+}
 
 // Hook para obtener el historial de pagos de un cliente
 export function usePagos(clienteId) {
@@ -23,7 +31,7 @@ export function usePagos(clienteId) {
 
         if (error) throw error;
         await cacheData('pagos', data);
-        return data;
+        return conComprobantesFirmados(data);
       } catch (err) {
         const cached = await getCachedByIndex('pagos', 'cliente_id', clienteId);
         if (cached && cached.length > 0) return cached;
@@ -31,6 +39,7 @@ export function usePagos(clienteId) {
       }
     },
     enabled: !!clienteId,
+    staleTime: SIGNED_URL_STALE_TIME,
   });
 }
 
@@ -105,18 +114,16 @@ export function useCreatePago() {
         const filePath = `${pagoData.cliente_id}/${fileName}`;
 
         const { error: uploadError } = await supabase.storage
-          .from('archivos_pagos')
+          .from(BUCKET_COMPROBANTES)
           .upload(filePath, archivoPDF);
 
         if (uploadError) {
           throw new Error('Error al subir el comprobante: ' + uploadError.message);
         }
 
-        const { data: { publicUrl } } = supabase.storage
-          .from('archivos_pagos')
-          .getPublicUrl(filePath);
-
-        comprobante_url = publicUrl;
+        // Se guarda la ruta, no una URL: el bucket es privado y la URL firmada
+        // se genera al mostrar el pago.
+        comprobante_url = filePath;
       }
 
       const payload = {
