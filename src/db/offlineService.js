@@ -202,6 +202,19 @@ export async function offlineCascadeDelete(tabla, id) {
   }
 }
 
+/**
+ * Borra todo lo guardado en el dispositivo: el caché de IndexedDB (incluida
+ * la cola) y las respuestas de Supabase que guardó el service worker. Se usa
+ * al cerrar sesión para que el próximo usuario no vea datos ajenos.
+ */
+export async function clearLocalData() {
+  await Promise.all(db.tables.map(table => table.clear()));
+  if (typeof caches !== 'undefined') {
+    await Promise.all(['supabase-api-cache', 'supabase-storage-cache'].map(name => caches.delete(name)));
+  }
+  notifyQueueChange();
+}
+
 // =============================================================================
 // PENDING SYNC: Cola de operaciones offline
 // =============================================================================
