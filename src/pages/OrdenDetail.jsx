@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { ArrowLeft, CarFront, User, Calendar, Wrench, Settings, PackageOpen, Plus, Camera, Trash2, FileText, CheckCircle2, Circle, Loader, PauseCircle, X, Save, Loader2, UploadCloud, DollarSign } from 'lucide-react';
+import { ArrowLeft, CarFront, User, Calendar, Wrench, Settings, PackageOpen, Plus, Camera, Trash2, FileText, CheckCircle2, Circle, Loader, PauseCircle, X, Save, Loader2, UploadCloud, DollarSign, SearchX } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 
@@ -20,7 +20,7 @@ export default function OrdenDetail() {
   const navigate = useNavigate();
 
   // Queries
-  const { data: orden, isLoading: isLoadingOrden } = useOrden(id);
+  const { data: orden, isLoading: isLoadingOrden, isError: isErrorOrden } = useOrden(id);
   const { data: repuestos = [] } = useRepuestos(id);
   const { data: tareas = [] } = useTareas(id);
   const { data: archivos = [] } = useArchivos(id);
@@ -65,11 +65,36 @@ export default function OrdenDetail() {
   const [deleteDeudaTarget, setDeleteDeudaTarget] = useState(null);
   const [deleteOrdenModal, setDeleteOrdenModal] = useState(false);
 
-  if (isLoadingOrden || !orden) {
+  if (isLoadingOrden) {
     return (
       <div className="flex flex-col items-center justify-center py-20 text-neutral-500">
         <Loader2 className="w-10 h-10 animate-spin mb-4" />
         <p>Cargando detalles de la orden...</p>
+      </div>
+    );
+  }
+
+  // useOrden devuelve null si la orden no existe (o si offline no está en el
+  // caché) y tira error si falla la red sin nada cacheado.
+  if (!orden) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 text-center px-4">
+        <SearchX className="w-12 h-12 text-neutral-400 mb-4" />
+        <h1 className="text-xl font-bold text-neutral-900 dark:text-white mb-2">
+          {isErrorOrden ? 'No se pudo cargar la orden' : 'Orden no encontrada'}
+        </h1>
+        <p className="text-neutral-500 dark:text-neutral-400 max-w-md mb-6">
+          {isErrorOrden
+            ? 'Revisá la conexión y volvé a intentar.'
+            : 'Puede que se haya eliminado o que todavía no esté disponible sin conexión.'}
+        </p>
+        <Link
+          to="/ordenes"
+          className="flex items-center text-sm font-semibold text-white bg-black dark:bg-red-600 hover:bg-neutral-900 dark:hover:bg-red-700 px-6 py-2.5 rounded-full transition-colors"
+        >
+          <ArrowLeft className="w-4 h-4 mr-2" />
+          Volver a órdenes
+        </Link>
       </div>
     );
   }
