@@ -5,7 +5,7 @@ import { supabase } from '../lib/supabase';
  * Servicio de sincronización offline para Mecánica Pistón.
  *
  * Funciones principales:
- * - cacheData(): guarda datos de Supabase en IndexedDB
+ * - cacheData(): guarda datos de Supabase en IndexedDB y borra lo que ya no existe
  * - getCachedData(): lee datos desde IndexedDB
  * - addPendingSync(): encola una operación para sincronizar después
  * - processPendingSyncs(): procesa la cola FIFO contra Supabase, con reintentos
@@ -44,13 +44,46 @@ function notifyQueueChange(motivo = 'actualizada') {
 // =============================================================================
 
 /**
- * Guarda un array de registros en la tabla IndexedDB correspondiente.
- * Usa bulkPut para upsert (insertar o actualizar por id).
+ * Ids con operaciones sin sincronizar (pendientes o en la bandeja de errores).
+ * Esos registros reflejan cambios locales que el servidor todavía no conoce,
+ * así que la reconciliación no los borra ni los pisa.
  */
-export async function cacheData(tabla, datos) {
+async function idsConCambiosLocales(tabla) {
+  const ops = await db.pending_sync.where('tabla').equals(tabla).toArray();
+  return new Set(ops.map(op => op.datos?.id).filter(Boolean));
+}
+
+/**
+ * Guarda lo que devolvió Supabase y reconcilia: borra del caché los registros
+ * que ya no existen en el servidor (por ejemplo, borrados desde otro
+ * dispositivo).
+ *
+ * @param {string} tabla
+ * @param {object[]} datos - Filas devueltas por Supabase (con id)
+ * @param {{campo: string, valor: any} | false} [alcance] - Qué parte de la tabla
+ *   representa `datos`. Sin alcance = la tabla completa. `{ campo, valor }` = solo
+ *   los registros con ese valor (por ejemplo, los repuestos de una orden).
+ *   `false` = consulta parcial (limit, varios filtros): guarda sin borrar nada.
+ */
+export async function cacheData(tabla, datos, alcance) {
   try {
-    if (!datos || !Array.isArray(datos) || datos.length === 0) return;
-    await db[tabla].bulkPut(datos);
+    if (!Array.isArray(datos)) return;
+
+    await db.transaction('rw', db[tabla], db.pending_sync, async () => {
+      const locales = await idsConCambiosLocales(tabla);
+
+      if (alcance !== false) {
+        const enServidor = new Set(datos.map(d => d.id));
+        const enCache = alcance
+          ? await db[tabla].where(alcance.campo).equals(alcance.valor).primaryKeys()
+          : await db[tabla].toCollection().primaryKeys();
+        const borrados = enCache.filter(id => !enServidor.has(id) && !locales.has(id));
+        if (borrados.length > 0) await db[tabla].bulkDelete(borrados);
+      }
+
+      const nuevos = datos.filter(d => !locales.has(d.id));
+      if (nuevos.length > 0) await db[tabla].bulkPut(nuevos);
+    });
   } catch (error) {
     console.warn(`[Offline] Error cacheando ${tabla}:`, error);
   }

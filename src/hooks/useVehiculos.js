@@ -69,7 +69,7 @@ export function useVehiculos(clienteId = null) {
         if (error) throw new Error(error.message);
         
         // Cache raw data (antes del map) para offline
-        await cacheData('vehiculos', data);
+        await cacheData('vehiculos', data, clienteId ? { campo: 'cliente_id', valor: clienteId } : undefined);
         return data.map(mapFromDB);
       } catch (err) {
         let cached;

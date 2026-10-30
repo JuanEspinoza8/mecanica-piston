@@ -74,7 +74,7 @@ export function useOrdenes(vehiculoId) {
 
         const { data, error } = await query;
         if (error) throw error;
-        await cacheData('ordenes_trabajo', data);
+        await cacheData('ordenes_trabajo', data, vehiculoId ? { campo: 'vehiculo_id', valor: vehiculoId } : undefined);
         return data.map(mapOrdenFromDB);
       } catch (err) {
         let cached;
@@ -280,7 +280,7 @@ export function useRepuestos(ordenId) {
           .eq('orden_id', ordenId)
           .order('created_at', { ascending: true });
         if (error) throw error;
-        await cacheData('repuestos', data);
+        await cacheData('repuestos', data, { campo: 'orden_id', valor: ordenId });
         return data;
       } catch (err) {
         const cached = await getCachedByIndex('repuestos', 'orden_id', ordenId);
@@ -376,7 +376,7 @@ export function useTareas(ordenId) {
           .eq('orden_id', ordenId)
           .order('created_at', { ascending: true });
         if (error) throw error;
-        await cacheData('tareas_orden', data);
+        await cacheData('tareas_orden', data, { campo: 'orden_id', valor: ordenId });
         return data;
       } catch (err) {
         const cached = await getCachedByIndex('tareas_orden', 'orden_id', ordenId);

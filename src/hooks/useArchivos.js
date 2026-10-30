@@ -12,7 +12,7 @@ export const ARCHIVOS_KEYS = {
 
 // El bucket es privado: cada archivo se muestra con una URL firmada que se
 // guarda también en el caché local para poder usarla sin conexión.
-async function conUrlsFirmadas(archivos) {
+export async function conUrlsFirmadas(archivos) {
   const urls = await getSignedUrls(BUCKET_ARCHIVOS, archivos.map(a => a.ruta_storage));
   return archivos.map(a => ({ ...a, url: urls[a.ruta_storage] || null }));
 }
@@ -35,7 +35,7 @@ export function useArchivos(ordenId) {
         if (error) throw error;
 
         const archivos = await conUrlsFirmadas(data);
-        await cacheData('archivos', archivos);
+        await cacheData('archivos', archivos, { campo: 'orden_id', valor: ordenId });
         return archivos;
       } catch (err) {
         const cached = await getCachedByIndex('archivos', 'orden_id', ordenId);
@@ -74,7 +74,7 @@ export function useArchivosVehiculo(vehiculoId) {
         if (error) throw error;
 
         const archivos = await conUrlsFirmadas(data);
-        await cacheData('archivos', archivos);
+        await cacheData('archivos', archivos, false);
 
         const ordenMap = Object.fromEntries(ordenes.map(o => [o.id, o.descripcion]));
         return archivos.map(archivo => ({

@@ -27,7 +27,7 @@ export function useDeudas(clienteId) {
           .eq('cliente_id', clienteId)
           .order('created_at', { ascending: false });
         if (error) throw error;
-        await cacheData('deudas', data);
+        await cacheData('deudas', data, { campo: 'cliente_id', valor: clienteId });
         return data;
       } catch (err) {
         const cached = await getCachedByIndex('deudas', 'cliente_id', clienteId);
@@ -83,7 +83,7 @@ export function useDeudasOrden(ordenId) {
           .eq('orden_id', ordenId)
           .order('created_at', { ascending: false });
         if (error) throw error;
-        await cacheData('deudas', data);
+        await cacheData('deudas', data, { campo: 'orden_id', valor: ordenId });
         return data;
       } catch (err) {
         const cached = await getCachedByIndex('deudas', 'orden_id', ordenId);
@@ -117,7 +117,7 @@ export function useDeudasVehiculo(vehiculoId) {
           .in('orden_id', ordenIds)
           .order('created_at', { ascending: false });
         if (error) throw error;
-        await cacheData('deudas', data);
+        await cacheData('deudas', data, false);
         return data;
       } catch (err) {
         const cached = await getCachedData('deudas');
@@ -273,7 +273,6 @@ export function useDeudaTotal() {
           .select('monto_total, monto_pagado')
           .in('estado', ['pendiente', 'parcial']);
         if (error) throw error;
-        await cacheData('deudas', data);
         return data.reduce((sum, d) => sum + (Number(d.monto_total) - Number(d.monto_pagado)), 0);
       } catch (err) {
         if (!isOnline()) {

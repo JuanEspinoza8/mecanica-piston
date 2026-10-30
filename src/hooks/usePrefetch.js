@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
 import { isOnline, cacheData } from '../db/offlineService';
+import { conUrlsFirmadas } from './useArchivos';
 
 // Import keys to use for prefetching
 import { CLIENTES_KEYS } from './useClientes';
@@ -150,8 +151,10 @@ export function usePrefetch() {
               .from('archivos')
               .select('*');
             if (error) throw error;
-            await cacheData('archivos', data);
-            return data;
+            // Con URL firmada para que las fotos se puedan ver offline
+            const archivos = await conUrlsFirmadas(data);
+            await cacheData('archivos', archivos);
+            return archivos;
           },
           staleTime: 5 * 60 * 1000
         });

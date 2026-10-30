@@ -30,7 +30,7 @@ export function usePagos(clienteId) {
           .order('fecha', { ascending: false });
 
         if (error) throw error;
-        await cacheData('pagos', data);
+        await cacheData('pagos', data, { campo: 'cliente_id', valor: clienteId });
         return conComprobantesFirmados(data);
       } catch (err) {
         const cached = await getCachedByIndex('pagos', 'cliente_id', clienteId);

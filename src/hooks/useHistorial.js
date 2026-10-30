@@ -53,8 +53,8 @@ export function useHistorialModificaciones(vehiculoId) {
 
         if (error) throw error;
 
-        // Cache en IndexedDB
-        await cacheData('historial_modificaciones', data);
+        // Cache en IndexedDB (consulta con limit: guarda sin reconciliar)
+        await cacheData('historial_modificaciones', data, false);
 
         // Mapear al formato que espera HistorialTimeline
         return data.map((item) => ({
@@ -129,8 +129,8 @@ export function useActividadReciente() {
 
         if (error) throw error;
 
-        // Cache raw data
-        await cacheData('historial_modificaciones', data);
+        // Cache raw data (consulta con limit: guarda sin reconciliar)
+        await cacheData('historial_modificaciones', data, false);
 
         return data.map((item) => ({
           id: item.id,
