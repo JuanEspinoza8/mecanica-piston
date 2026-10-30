@@ -110,10 +110,10 @@ export async function offlineCascadeDelete(tabla, id) {
     else if (tabla === 'ordenes_trabajo') {
       const deudas = await getCachedByIndex('deudas', 'orden_id', id);
       for (const d of deudas) await offlineCascadeDelete('deudas', d.id);
-      
+
       const pagos = await getCachedByIndex('pagos', 'orden_id', id);
       for (const p of pagos) await offlineCascadeDelete('pagos', p.id);
-      
+
       const tareas = await getCachedByIndex('tareas_orden', 'orden_id', id);
       for (const t of tareas) await offlineCascadeDelete('tareas_orden', t.id);
       
@@ -151,6 +151,16 @@ export async function addPendingSync(tabla, operacion, datos) {
   } catch (error) {
     console.error('[Offline] Error agregando pendiente:', error);
   }
+}
+
+/**
+ * Encola la subida de un archivo elegido sin conexión (el File se guarda en
+ * IndexedDB). Al sincronizar se sube a Storage y se guarda la ruta en el campo
+ * `campo` del registro `registroId` de `tabla`. Tiene que encolarse después del
+ * insert de ese registro.
+ */
+export async function addPendingUpload({ tabla, registroId, campo, bucket, path, file }) {
+  await addPendingSync(tabla, 'upload', { id: registroId, campo, bucket, path, file });
 }
 
 /**
@@ -229,8 +239,21 @@ async function executeSyncOperation(item) {
         await supabase.from('repuestos').delete().eq('orden_id', datos.id);
         await supabase.from('archivos').delete().eq('orden_id', datos.id);
       }
-      
+
       const { error } = await supabase.from(tabla).delete().eq('id', datos.id);
+      if (error) throw error;
+      break;
+    }
+    case 'upload': {
+      // upsert: si un intento anterior subió el archivo pero falló el update,
+      // el reintento lo reemplaza en vez de fallar por duplicado.
+      const { bucket, path, file, campo } = datos;
+      const { error: uploadError } = await supabase.storage
+        .from(bucket)
+        .upload(path, file, { upsert: true });
+      if (uploadError) throw uploadError;
+
+      const { error } = await supabase.from(tabla).update({ [campo]: path }).eq('id', datos.id);
       if (error) throw error;
       break;
     }

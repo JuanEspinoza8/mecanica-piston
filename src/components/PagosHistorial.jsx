@@ -102,10 +102,10 @@ export default function PagosHistorial({ clienteId }) {
                       <Download className="w-3 h-3 mr-1" />
                       PDF
                     </a>
-                  ) : pago.comprobante_url && (
+                  ) : (pago.comprobante_url || pago.comprobante_pendiente) && (
                     <span
                       className="flex items-center text-xs font-bold text-neutral-400 dark:text-neutral-500 bg-neutral-100 dark:bg-neutral-800 px-2 py-1 rounded"
-                      title="El comprobante se puede abrir con conexión"
+                      title={pago.comprobante_pendiente ? 'El comprobante se subirá al reconectar' : 'El comprobante se puede abrir con conexión'}
                     >
                       <Download className="w-3 h-3 mr-1" />
                       PDF
@@ -138,6 +138,7 @@ export default function PagosHistorial({ clienteId }) {
                 cliente_id: deleteTarget.cliente_id,
                 deuda_id: deleteTarget.deuda_id,
                 monto: deleteTarget.monto,
+                comprobante_url: deleteTarget.comprobante_url,
               });
               setDeleteTarget(null);
             } catch (e) {}

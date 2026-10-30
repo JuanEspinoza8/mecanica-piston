@@ -10,6 +10,8 @@
 -- Usar solo para inicializar o hacer hard-reset de la base de datos.
 -- ==============================================================================
 DROP FUNCTION IF EXISTS public.get_saldo_cliente(UUID) CASCADE;
+DROP FUNCTION IF EXISTS public.trg_deuda_calcular_pagado() CASCADE;
+DROP FUNCTION IF EXISTS public.trg_pago_recalcular_deuda() CASCADE;
 
 DROP TABLE IF EXISTS public.archivos CASCADE;
 DROP TABLE IF EXISTS public.historial_modificaciones CASCADE;
@@ -314,3 +316,63 @@ CREATE TRIGGER trg_repuesto_eliminado
   AFTER DELETE ON public.repuestos
   FOR EACH ROW EXECUTE FUNCTION public.trg_historial_repuesto_eliminado();
 
+-- ==============================================================================
+-- DEUDAS: monto_pagado y estado se calculan desde la tabla pagos
+--
+-- El cliente nunca escribe monto_pagado: si lo manda, se ignora. Así dos
+-- dispositivos (o un pago encolado offline) no se pisan entre sí.
+-- ==============================================================================
+
+CREATE OR REPLACE FUNCTION public.trg_deuda_calcular_pagado()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SET search_path = public
+AS $$
+DECLARE
+  v_pagado DECIMAL(10, 2);
+BEGIN
+  SELECT COALESCE(SUM(monto), 0) INTO v_pagado
+  FROM public.pagos
+  WHERE deuda_id = NEW.id;
+
+  -- Se topea en monto_total para que el saldo nunca sea negativo
+  -- (el front ya impide pagar de más).
+  NEW.monto_pagado := LEAST(v_pagado, NEW.monto_total);
+  NEW.estado := CASE
+    WHEN v_pagado >= NEW.monto_total THEN 'pagada'
+    WHEN v_pagado > 0 THEN 'parcial'
+    ELSE 'pendiente'
+  END;
+  RETURN NEW;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.trg_pago_recalcular_deuda()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SET search_path = public
+AS $$
+BEGIN
+  -- El UPDATE "vacío" dispara trg_deuda_calcular_pagado, que hace la cuenta.
+  IF TG_OP <> 'INSERT' AND OLD.deuda_id IS NOT NULL THEN
+    UPDATE public.deudas SET monto_pagado = monto_pagado WHERE id = OLD.deuda_id;
+  END IF;
+
+  IF TG_OP <> 'DELETE' AND NEW.deuda_id IS NOT NULL
+     AND (TG_OP = 'INSERT' OR NEW.deuda_id IS DISTINCT FROM OLD.deuda_id) THEN
+    UPDATE public.deudas SET monto_pagado = monto_pagado WHERE id = NEW.deuda_id;
+  END IF;
+
+  RETURN NULL;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_deuda_calcular_pagado ON public.deudas;
+CREATE TRIGGER trg_deuda_calcular_pagado
+  BEFORE INSERT OR UPDATE ON public.deudas
+  FOR EACH ROW EXECUTE FUNCTION public.trg_deuda_calcular_pagado();
+
+DROP TRIGGER IF EXISTS trg_pago_recalcular_deuda ON public.pagos;
+CREATE TRIGGER trg_pago_recalcular_deuda
+  AFTER INSERT OR UPDATE OR DELETE ON public.pagos
+  FOR EACH ROW EXECUTE FUNCTION public.trg_pago_recalcular_deuda();
