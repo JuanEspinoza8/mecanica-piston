@@ -65,24 +65,26 @@ flowchart LR
 
 **Lecturas.** Cada hook de datos (`src/hooks/`) usa `offlineQuery` (`src/hooks/offlineHelpers.js`):
 
-- **Con conexión** consulta Supabase, guarda el resultado en IndexedDB y lo devuelve.
-- **Sin conexión** lee de IndexedDB.
+- **Con conexión** consulta Supabase, guarda el resultado en IndexedDB y lo devuelve. Encima muestra los cambios hechos offline que todavía no llegaron al servidor, para que nadie cargue dos veces el mismo pago.
+- **Sin conexión, o sin sesión válida,** lee de IndexedDB. Sin sesión, Supabase respondería con listas vacías.
 - **Si la red falla** a mitad de camino, usa lo que haya en caché.
 
-Al guardar, el caché se **reconcilia**: lo que se borró desde otro dispositivo también desaparece localmente. Los registros con cambios sin sincronizar no se tocan.
+Al guardar, el caché se **reconcilia**: lo que se borró desde otro dispositivo también desaparece localmente. Los registros con cambios sin sincronizar no se tocan, y tampoco se borra nada si la respuesta pudo venir cortada por el límite de filas.
 
-**Escrituras.** Sin conexión, `offlineMutation` aplica el cambio en IndexedDB (la pantalla se actualiza enseguida) y lo encola en `pending_sync`. Los ids se generan en el cliente, así un registro creado offline conserva su id al sincronizar y otros registros pueden apuntar a él.
+**Escrituras.** Sin conexión, `offlineMutation` aplica el cambio en IndexedDB (la pantalla se actualiza enseguida) y lo encola en `pending_sync`. Los ids se generan en el cliente, así un registro creado offline conserva su id al sincronizar y otros registros pueden apuntar a él. Si un registro todavía tiene cambios en la cola, los cambios nuevos también pasan por la cola aunque haya conexión, para respetar el orden.
 
 **Sincronización** (`src/db/offlineService.js`). Al reconectar o al iniciar sesión, la cola se procesa en orden:
 
 - **Problema momentáneo** (5xx, timeout, sesión vencida): se reintenta con espera exponencial, sin alterar el orden.
-- **Rechazo del servidor** (dato duplicado, constraint, permisos): la operación pasa a una **bandeja de errores** visible, donde se puede reintentar o descartar, y la cola sigue.
+- **Rechazo del servidor** (dato duplicado, constraint, permisos, o una modificación de un registro que ya no existe): la operación pasa a una **bandeja de errores** visible, donde se puede reintentar o descartar, y la cola sigue. Las demás operaciones de ese mismo registro esperan a que se resuelva.
 - **Reintento de algo que ya había llegado** (por ejemplo, se cortó la conexión antes de la respuesta): un `23505` en un insert cuyo id ya existe se toma como sincronizado.
-- Un lock evita dos procesamientos en paralelo.
+- Un lock evita dos procesamientos en paralelo, también entre pestañas (Web Locks).
 
 **Archivos.** Los buckets son privados: fotos y comprobantes se muestran con URLs firmadas que vencen. El service worker guarda las imágenes sin el parámetro `token`, así una foto ya vista se sigue mostrando offline aunque su URL haya vencido. Un comprobante de pago elegido sin conexión se guarda en IndexedDB y se sube al reconectar.
 
-**Cerrar sesión** borra IndexedDB y las cachés del service worker. Si hay cambios sin sincronizar, la app avisa antes.
+**Service worker.** Precachea la app y guarda las imágenes de Storage. Las respuestas de la API no se cachean ahí: de eso se encarga IndexedDB.
+
+**Sesión.** Si la app se abre sin conexión con el token vencido, sigue funcionando con el último usuario y renueva la sesión al volver la conexión. Para **cerrar sesión** hace falta conexión: se borran IndexedDB y las cachés del service worker. Si hay cambios sin sincronizar, la app avisa antes.
 
 ---
 
@@ -164,6 +166,7 @@ supabase/              Schema y migraciones
 
 - **No es tiempo real.** No se usa Supabase Realtime. Un dispositivo ve los cambios de otro cuando vuelve a consultar: al entrar a una pantalla o al recuperar el foco.
 - **Conflictos.** Si dos dispositivos editan el mismo dato sin conexión, queda el último que sincroniza. La excepción es el saldo de las deudas, que siempre recalcula el servidor.
+- **Más de 1000 registros por tabla.** Supabase devuelve como máximo 1000 filas por consulta y las listas no se paginan: por encima de ese número, las listas y el caché offline quedan incompletos.
 - **Fotos y PDF de las órdenes:** subirlos y borrarlos requiere conexión. Sin conexión solo se ven las fotos ya abiertas o precargadas antes, y los PDF no se abren. Los comprobantes de pago sí se pueden adjuntar sin conexión.
 - **Un solo nivel de acceso.** Todos los usuarios del taller ven y editan todo. No hay roles ni varios talleres en la misma base.
 - **Datos borrados en cascada.** Borrar un cliente borra sus vehículos, órdenes, deudas y pagos. Borrar una orden conserva las deudas y los pagos, sin vínculo a la orden.
