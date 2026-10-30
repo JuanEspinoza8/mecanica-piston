@@ -38,7 +38,8 @@ export default function OrdenDetail() {
 
   // Estados interactivos
   const [isRepuestoModalOpen, setIsRepuestoModalOpen] = useState(false);
-  const [manoDeObra, setManoDeObra] = useState('');
+  // Texto del input mientras se edita; null = se muestra lo guardado en la orden
+  const [manoDeObraEditando, setManoDeObraEditando] = useState(null);
   
   const [viewerOpen, setViewerOpen] = useState(false);
   const [viewerIndex, setViewerIndex] = useState(0);
@@ -137,8 +138,27 @@ export default function OrdenDetail() {
 
   // Cálculos de Totales
   const totalRepuestos = repuestos.reduce((sum, item) => sum + (Number(item.costo) * Number(item.cantidad)), 0);
-  const costoManoDeObra = Number(String(manoDeObra).replace(/\./g, '')) || 0;
+  const manoDeObraGuardada = Number(orden.mano_de_obra) || 0;
+  const costoManoDeObra = manoDeObraEditando !== null
+    ? Number(manoDeObraEditando.replace(/\./g, '')) || 0
+    : manoDeObraGuardada;
   const totalEstimado = totalRepuestos + costoManoDeObra;
+
+  const formatearMiles = (valor) => (valor ? Number(valor).toLocaleString('es-AR') : '');
+
+  // Se guarda al salir del campo (offline queda encolado como cualquier update)
+  const handleGuardarManoDeObra = async () => {
+    if (manoDeObraEditando === null) return;
+    try {
+      if (costoManoDeObra !== manoDeObraGuardada) {
+        await updateOrden({ id: orden.id, mano_de_obra: costoManoDeObra });
+      }
+    } catch {
+      toast.error('No se pudo guardar la mano de obra');
+    } finally {
+      setManoDeObraEditando(null);
+    }
+  };
 
   // Filtrar fotos
   const fotos = archivos.filter(a => a.tipo === 'imagen');
@@ -622,12 +642,18 @@ export default function OrdenDetail() {
                     type="text"
                     inputMode="numeric"
                     placeholder="0"
-                    value={manoDeObra}
+                    value={manoDeObraEditando ?? formatearMiles(manoDeObraGuardada)}
                     onChange={(e) => {
                       const raw = e.target.value.replace(/\D/g, '');
-                      setManoDeObra(raw ? parseInt(raw, 10).toLocaleString('es-AR') : '');
+                      setManoDeObraEditando(raw ? formatearMiles(parseInt(raw, 10)) : '');
                     }}
-                    onFocus={(e) => e.target.select()}
+                    onFocus={(e) => {
+                      setManoDeObraEditando(formatearMiles(manoDeObraGuardada));
+                      e.target.select();
+                    }}
+                    onBlur={handleGuardarManoDeObra}
+                    onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
+                    aria-label="Mano de obra"
                     className="w-24 bg-neutral-900 dark:bg-neutral-900 border border-neutral-700 rounded px-2 py-1 text-right text-white font-bold focus:outline-none focus:border-red-500 transition-colors appearance-none"
                   />
                 </div>

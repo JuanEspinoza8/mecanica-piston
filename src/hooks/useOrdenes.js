@@ -218,6 +218,11 @@ export function useUpdateOrden() {
       return data;
     },
     onSuccess: (data, variables) => {
+      // Aplicar el cambio al detalle ya cargado (conserva los joins) para que
+      // la pantalla no muestre el valor viejo mientras se vuelve a pedir.
+      queryClient.setQueryData(ORDENES_KEYS.detail(variables.id), (anterior) =>
+        anterior ? mapOrdenFromDB({ ...anterior, ...data }) : anterior
+      );
       queryClient.invalidateQueries({ queryKey: ORDENES_KEYS.all });
       queryClient.invalidateQueries({ queryKey: ORDENES_KEYS.detail(variables.id) });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });

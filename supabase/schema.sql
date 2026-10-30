@@ -61,6 +61,7 @@ CREATE TABLE public.ordenes_trabajo (
     estado TEXT DEFAULT 'Pendiente' CHECK (estado IN ('Pendiente', 'En proceso', 'Esperando repuesto', 'Terminado', 'Entregado')),
     motivo_espera TEXT,
     notas TEXT,
+    mano_de_obra DECIMAL(10, 2) NOT NULL DEFAULT 0 CHECK (mano_de_obra >= 0),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
