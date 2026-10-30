@@ -1,69 +1,88 @@
-import { useEffect, useCallback } from 'react';
+import { useEffect, useCallback, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { processPendingSyncs, getPendingCount } from '../db/offlineService';
+import { processPendingSyncs, getPendingCount, getSyncErrorCount, subscribeQueue } from '../db/offlineService';
 import useAppStore from '../store/useAppStore';
 import { toast } from 'sonner';
 
+const plural = (n, singular, pluralForm) => `${n} ${n === 1 ? singular : pluralForm}`;
+
 /**
  * Hook de sincronización offline.
- * 
- * - Escucha eventos online/offline del navegador
- * - Al reconectar, procesa la cola de pendientes
- * - Actualiza el contador de pendientes en Zustand
- * - Se monta UNA SOLA VEZ en App.jsx
+ *
+ * - Al montar y al reconectar, procesa la cola de pendientes
+ * - Si una operación falla por un problema momentáneo, programa el reintento
+ * - Mantiene en Zustand los contadores de pendientes y de errores
+ * - Se monta UNA SOLA VEZ en App.jsx (el lock contra ejecuciones en paralelo
+ *   está en processPendingSyncs)
  */
 export function useOfflineSync() {
   const queryClient = useQueryClient();
   const setPendingSyncCount = useAppStore((s) => s.setPendingSyncCount);
+  const setSyncErrorCount = useAppStore((s) => s.setSyncErrorCount);
+  const isAuthenticated = useAppStore((s) => s.isAuthenticated);
+  const retryTimer = useRef(null);
+  // Última versión de handleSync, para que el timer de reintento la llame
+  // sin que la función se referencie a sí misma.
+  const handleSyncRef = useRef(null);
 
-  // Actualizar contador de pendientes
-  const refreshPendingCount = useCallback(async () => {
-    const count = await getPendingCount();
-    setPendingSyncCount(count);
-  }, [setPendingSyncCount]);
+  const refreshCounts = useCallback(async () => {
+    const [pendientes, errores] = await Promise.all([getPendingCount(), getSyncErrorCount()]);
+    setPendingSyncCount(pendientes);
+    setSyncErrorCount(errores);
+  }, [setPendingSyncCount, setSyncErrorCount]);
 
-  // Procesar cola al reconectar
-  const handleSync = useCallback(async () => {
+  const handleSync = useCallback(async ({ ignorarEspera = false } = {}) => {
+    clearTimeout(retryTimer.current);
+    if (!navigator.onLine) return;
+
     const count = await getPendingCount();
     if (count === 0) return;
 
-    toast.info(`Sincronizando ${count} cambio${count > 1 ? 's' : ''} pendiente${count > 1 ? 's' : ''}...`);
-
-    const result = await processPendingSyncs();
+    const result = await processPendingSyncs({ ignorarEspera });
 
     if (result.processed > 0) {
       // Invalidar todos los queries para refrescar datos
       queryClient.invalidateQueries();
-      toast.success(`${result.processed} cambio${result.processed > 1 ? 's' : ''} sincronizado${result.processed > 1 ? 's' : ''}`);
+      toast.success(`${plural(result.processed, 'cambio sincronizado', 'cambios sincronizados')}`);
     }
 
-    if (result.failed) {
-      toast.error(`Error de sincronización: ${result.error}`);
+    if (result.errores > 0) {
+      toast.error(`${plural(result.errores, 'cambio no se pudo', 'cambios no se pudieron')} sincronizar. Revisalos en "Errores de sincronización".`);
     }
 
-    await refreshPendingCount();
-  }, [queryClient, refreshPendingCount]);
+    if (result.reintentarEn) {
+      const espera = Math.max(1000, result.reintentarEn - Date.now());
+      retryTimer.current = setTimeout(() => handleSyncRef.current?.(), espera);
+    }
+  }, [queryClient]);
 
   useEffect(() => {
-    // Contar pendientes al montar
-    refreshPendingCount();
+    handleSyncRef.current = handleSync;
+  }, [handleSync]);
 
-    // Escuchar reconexión
-    const handleOnline = () => {
-      handleSync();
-    };
+  // Contadores siempre al día, venga de donde venga el cambio en la cola.
+  // Si hay algo nuevo para mandar (por ejemplo, el usuario reintentó un error
+  // desde la bandeja), se intenta sincronizar enseguida.
+  useEffect(() => {
+    refreshCounts();
+    return subscribeQueue((motivo) => {
+      refreshCounts();
+      if (motivo === 'nueva' && isAuthenticated) handleSync({ ignorarEspera: true });
+    });
+  }, [refreshCounts, handleSync, isAuthenticated]);
 
+  useEffect(() => {
+    // Sin sesión no se sincroniza (RLS rechazaría todo). Al iniciar sesión,
+    // este efecto vuelve a correr y procesa lo que haya quedado en la cola.
+    if (!isAuthenticated) return;
+
+    const handleOnline = () => handleSync({ ignorarEspera: true });
     window.addEventListener('online', handleOnline);
-
-    // Si ya estamos online al montar, intentar sync por si hay pendientes
-    if (navigator.onLine) {
-      handleSync();
-    }
+    handleSync();
 
     return () => {
       window.removeEventListener('online', handleOnline);
+      clearTimeout(retryTimer.current);
     };
-  }, [handleSync, refreshPendingCount]);
-
-  return { refreshPendingCount };
+  }, [handleSync, isAuthenticated]);
 }

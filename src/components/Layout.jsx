@@ -3,6 +3,7 @@ import { Home, Users, ClipboardList, Search, CarFront, Moon, Sun, LogOut, Trendi
 import BottomNav from './BottomNav';
 import useAppStore from '../store/useAppStore';
 import GlobalSearch from './GlobalSearch';
+import SyncErrorsPanel from './SyncErrorsPanel';
 import { supabase } from '../lib/supabase';
 
 const APP_VERSION = __APP_VERSION__;
@@ -116,7 +117,8 @@ export default function Layout({ children }) {
             </div>
           </div>
           
-          <div className="flex-1 md:hidden flex justify-end">
+          <div className="flex-1 md:hidden flex justify-end items-center">
+            <SyncErrorsPanel />
             {/* Botón Theme Mobile */}
             <button 
               onClick={toggleTheme}
@@ -142,6 +144,7 @@ export default function Layout({ children }) {
           
           {/* Barra de búsqueda interactiva Desktop */}
           <div className="hidden max-w-2xl flex-1 md:flex items-center space-x-4">
+            <SyncErrorsPanel />
             <button 
               onClick={openSearch}
               className="group flex h-12 w-full max-w-md items-center rounded-full border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900 px-5 text-sm text-neutral-400 transition-all hover:border-red-500 dark:hover:border-red-500/50 hover:bg-white dark:hover:bg-neutral-800"

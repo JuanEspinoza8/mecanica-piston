@@ -3,13 +3,41 @@ import { supabase } from '../lib/supabase';
 
 /**
  * Servicio de sincronización offline para Mecánica Pistón.
- * 
+ *
  * Funciones principales:
  * - cacheData(): guarda datos de Supabase en IndexedDB
  * - getCachedData(): lee datos desde IndexedDB
  * - addPendingSync(): encola una operación para sincronizar después
- * - processPendingSyncs(): procesa la cola FIFO contra Supabase
+ * - processPendingSyncs(): procesa la cola FIFO contra Supabase, con reintentos
+ * - getSyncErrors() / retrySyncError() / discardSyncError(): bandeja de errores
  */
+
+// Reintentos: espera exponencial (2 s, 4 s, 8 s...) con un máximo de 5 minutos.
+// Los errores del servidor (5xx, timeouts) se reintentan hasta MAX_INTENTOS y
+// después pasan a la bandeja. Los errores de red no cuentan como intento: sin
+// conexión real no tiene sentido rendirse.
+export const MAX_INTENTOS = 6;
+const BACKOFF_BASE_MS = 2000;
+const BACKOFF_MAX_MS = 5 * 60 * 1000;
+
+export function backoffMs(intentos) {
+  return Math.min(BACKOFF_BASE_MS * 2 ** (intentos - 1), BACKOFF_MAX_MS);
+}
+
+// Avisos de cambios en la cola (para actualizar contadores en la UI sin que
+// cada hook tenga que hacerlo a mano). El motivo es 'nueva' cuando hay algo
+// nuevo para mandar (una operación encolada o reintentada) y 'actualizada' en
+// el resto de los casos.
+const queueListeners = new Set();
+
+export function subscribeQueue(listener) {
+  queueListeners.add(listener);
+  return () => queueListeners.delete(listener);
+}
+
+function notifyQueueChange(motivo = 'actualizada') {
+  queueListeners.forEach(listener => listener(motivo));
+}
 
 // =============================================================================
 // CACHE: Guardar y leer datos de IndexedDB
@@ -97,16 +125,19 @@ export async function offlineCascadeDelete(tabla, id) {
     if (tabla === 'clientes') {
       const vehiculos = await getCachedByIndex('vehiculos', 'cliente_id', id);
       for (const v of vehiculos) await offlineCascadeDelete('vehiculos', v.id);
-      
+
       const deudas = await getCachedByIndex('deudas', 'cliente_id', id);
       for (const d of deudas) await offlineCascadeDelete('deudas', d.id);
-      
+
       const pagos = await getCachedByIndex('pagos', 'cliente_id', id);
       for (const p of pagos) await offlineCascadeDelete('pagos', p.id);
-    } 
+    }
     else if (tabla === 'vehiculos') {
       const ordenes = await getCachedByIndex('ordenes_trabajo', 'vehiculo_id', id);
       for (const o of ordenes) await offlineCascadeDelete('ordenes_trabajo', o.id);
+
+      const historial = await getCachedByIndex('historial_modificaciones', 'vehiculo_id', id);
+      for (const h of historial) await removeCached('historial_modificaciones', h.id);
     }
     else if (tabla === 'ordenes_trabajo') {
       // Igual que en Postgres (ON DELETE SET NULL): las deudas y los pagos
@@ -119,12 +150,17 @@ export async function offlineCascadeDelete(tabla, id) {
 
       const tareas = await getCachedByIndex('tareas_orden', 'orden_id', id);
       for (const t of tareas) await offlineCascadeDelete('tareas_orden', t.id);
-      
+
       const repuestos = await getCachedByIndex('repuestos', 'orden_id', id);
       for (const r of repuestos) await offlineCascadeDelete('repuestos', r.id);
-      
+
       const archivos = await getCachedByIndex('archivos', 'orden_id', id);
       for (const a of archivos) await offlineCascadeDelete('archivos', a.id);
+    }
+    else if (tabla === 'deudas') {
+      // pagos.deuda_id es ON DELETE SET NULL
+      const pagos = await getCachedByIndex('pagos', 'deuda_id', id);
+      for (const p of pagos) await cacheOne('pagos', { ...p, deuda_id: null, deudas: null });
     }
 
     await removeCached(tabla, id);
@@ -140,8 +176,8 @@ export async function offlineCascadeDelete(tabla, id) {
 /**
  * Agrega una operación a la cola de pendientes.
  * @param {string} tabla - Nombre de la tabla Supabase (ej: 'clientes')
- * @param {'insert'|'update'|'delete'} operacion - Tipo de operación
- * @param {object} datos - Datos de la operación
+ * @param {'insert'|'update'|'delete'|'upload'} operacion - Tipo de operación
+ * @param {object} datos - Datos de la operación (siempre con `id` del registro)
  */
 export async function addPendingSync(tabla, operacion, datos) {
   try {
@@ -150,7 +186,11 @@ export async function addPendingSync(tabla, operacion, datos) {
       operacion,
       datos,
       timestamp: Date.now(),
+      estado: 'pendiente',
+      intentos: 0,
+      proximoIntento: 0,
     });
+    notifyQueueChange('nueva');
   } catch (error) {
     console.error('[Offline] Error agregando pendiente:', error);
   }
@@ -189,11 +229,12 @@ export async function deleteOrdenEnServidor(id) {
 }
 
 /**
- * Obtiene todas las operaciones pendientes en orden FIFO.
+ * Operaciones que todavía hay que mandar, en orden FIFO.
  */
 export async function getPendingSyncs() {
   try {
-    return await db.pending_sync.orderBy('id').toArray();
+    const pendientes = await db.pending_sync.where('estado').equals('pendiente').toArray();
+    return pendientes.sort((a, b) => a.id - b.id);
   } catch (error) {
     console.error('[Offline] Error leyendo pendientes:', error);
     return [];
@@ -201,41 +242,111 @@ export async function getPendingSyncs() {
 }
 
 /**
- * Cuenta las operaciones pendientes.
+ * Cuenta las operaciones pendientes (sin contar las de la bandeja de errores).
  */
 export async function getPendingCount() {
   try {
-    return await db.pending_sync.count();
-  } catch (error) {
+    return await db.pending_sync.where('estado').equals('pendiente').count();
+  } catch {
     return 0;
   }
 }
 
-/**
- * Procesa todas las operaciones pendientes contra Supabase.
- * Ejecuta en orden FIFO. Si una falla, se detiene y deja las restantes.
- * 
- * @returns {{ processed: number, failed: boolean, error?: string }}
- */
-export async function processPendingSyncs() {
-  const pendientes = await getPendingSyncs();
-  if (pendientes.length === 0) return { processed: 0, failed: false };
+// =============================================================================
+// BANDEJA DE ERRORES: operaciones que fallaron de forma permanente
+// =============================================================================
 
-  let processed = 0;
-
-  for (const item of pendientes) {
-    try {
-      await executeSyncOperation(item);
-      // Eliminar de la cola tras éxito
-      await db.pending_sync.delete(item.id);
-      processed++;
-    } catch (error) {
-      console.error(`[Sync] Error procesando operación #${item.id}:`, error);
-      return { processed, failed: true, error: error.message };
-    }
+export async function getSyncErrors() {
+  try {
+    const errores = await db.pending_sync.where('estado').equals('error').toArray();
+    return errores.sort((a, b) => a.id - b.id);
+  } catch {
+    return [];
   }
+}
 
-  return { processed, failed: false };
+export async function getSyncErrorCount() {
+  try {
+    return await db.pending_sync.where('estado').equals('error').count();
+  } catch {
+    return 0;
+  }
+}
+
+/** Devuelve la operación a la cola para intentarla otra vez. */
+export async function retrySyncError(id) {
+  await db.pending_sync.update(id, { estado: 'pendiente', intentos: 0, esperas: 0, proximoIntento: 0, ultimoError: null });
+  notifyQueueChange('nueva');
+}
+
+/**
+ * Descarta la operación. El cambio local que la originó se pierde: la próxima
+ * vez que se lean los datos con conexión, la reconciliación del caché vuelve
+ * al estado del servidor.
+ */
+export async function discardSyncError(id) {
+  await db.pending_sync.delete(id);
+  notifyQueueChange();
+}
+
+// =============================================================================
+// PROCESAMIENTO DE LA COLA
+// =============================================================================
+
+// Códigos de Postgres que indican un problema momentáneo
+const PG_TRANSITORIOS = new Set(['40001', '40P01', '55P03', '57014', '53300']);
+
+/**
+ * Clasifica un error de Supabase:
+ * - 'red': no hubo respuesta (sin conexión real). Se reintenta sin límite.
+ * - 'transitorio': el servidor respondió con un problema momentáneo (5xx,
+ *   timeout, sesión vencida). Se reintenta hasta MAX_INTENTOS.
+ * - 'permanente': el servidor rechazó los datos (constraint, permisos,
+ *   formato). Reintentar no sirve: va a la bandeja de errores.
+ */
+export function clasificarError(error) {
+  const status = Number(error?.status ?? error?.statusCode) || 0;
+  const code = error?.code ? String(error.code) : '';
+
+  if (PG_TRANSITORIOS.has(code) || code.startsWith('08') || code === 'PGRST301') return 'transitorio';
+  if (status === 401 || status === 408 || status === 429 || status >= 500) return 'transitorio';
+  if (!status && !code) return 'red';
+  return 'permanente';
+}
+
+/** Mensaje entendible para mostrar en la bandeja. */
+export function describirError(error) {
+  const code = error?.code ? String(error.code) : '';
+  const detalle = error?.details || error?.message || 'Error desconocido';
+  switch (code) {
+    case '23505': return `Ya existe un registro con esos datos (${detalle})`;
+    case '23503': return 'Hace referencia a un registro que no existe o que se borró';
+    case '23514': return `Algún valor no es válido (${detalle})`;
+    case '42501': return 'Sin permisos para hacer este cambio';
+    default: return detalle;
+  }
+}
+
+/**
+ * Un insert que falla por clave duplicada (23505) puede ser un reintento de
+ * algo que ya llegó al servidor (por ejemplo, se cortó la conexión antes de
+ * recibir la respuesta). Como los ids se generan en el cliente, si el registro
+ * con ese id existe, la operación ya está hecha. Si no existe, el duplicado es
+ * otro campo único (por ejemplo, la patente) y es un error real.
+ */
+async function yaEstabaSincronizado(item, error) {
+  if (item.operacion !== 'insert' || error?.code !== '23505' || !item.datos?.id) return false;
+  const { data, error: selectError } = await supabase
+    .from(item.tabla)
+    .select('id')
+    .eq('id', item.datos.id)
+    .maybeSingle();
+  return !selectError && !!data;
+}
+
+/** Tira el error de una respuesta de Supabase con su status HTTP adjunto. */
+function lanzarSiError({ error, status }) {
+  if (error) throw Object.assign(error, { status: error.status ?? status });
 }
 
 /**
@@ -246,14 +357,12 @@ async function executeSyncOperation(item) {
 
   switch (operacion) {
     case 'insert': {
-      const { error } = await supabase.from(tabla).insert([datos]);
-      if (error) throw error;
+      lanzarSiError(await supabase.from(tabla).insert([datos]));
       break;
     }
     case 'update': {
       const { id, ...updateData } = datos;
-      const { error } = await supabase.from(tabla).update(updateData).eq('id', id);
-      if (error) throw error;
+      lanzarSiError(await supabase.from(tabla).update(updateData).eq('id', id));
       break;
     }
     case 'delete': {
@@ -261,8 +370,7 @@ async function executeSyncOperation(item) {
         await deleteOrdenEnServidor(datos.id);
         break;
       }
-      const { error } = await supabase.from(tabla).delete().eq('id', datos.id);
-      if (error) throw error;
+      lanzarSiError(await supabase.from(tabla).delete().eq('id', datos.id));
       break;
     }
     case 'upload': {
@@ -274,13 +382,95 @@ async function executeSyncOperation(item) {
         .upload(path, file, { upsert: true });
       if (uploadError) throw uploadError;
 
-      const { error } = await supabase.from(tabla).update({ [campo]: path }).eq('id', datos.id);
-      if (error) throw error;
+      lanzarSiError(await supabase.from(tabla).update({ [campo]: path }).eq('id', datos.id));
       break;
     }
     default:
-      console.warn(`[Sync] Operación desconocida: ${operacion}`);
+      throw Object.assign(new Error(`Operación desconocida: ${operacion}`), { code: 'OP_DESCONOCIDA' });
   }
+}
+
+async function procesarCola({ ignorarEspera = false } = {}) {
+  const resultado = { processed: 0, errores: 0, reintentarEn: null };
+
+  // Sin sesión, RLS rechazaría todo como "sin permisos" y la cola terminaría
+  // entera en la bandeja de errores. Se espera a que el usuario inicie sesión.
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) return { ...resultado, sinSesion: true };
+
+  const pendientes = await getPendingSyncs();
+
+  for (const item of pendientes) {
+    // La cola es FIFO: si la primera operación está esperando un reintento,
+    // las siguientes también esperan (pueden depender de ella).
+    if (!ignorarEspera && item.proximoIntento > Date.now()) {
+      resultado.reintentarEn = item.proximoIntento;
+      break;
+    }
+
+    try {
+      await executeSyncOperation(item);
+      await db.pending_sync.delete(item.id);
+      resultado.processed++;
+    } catch (error) {
+      if (await yaEstabaSincronizado(item, error)) {
+        await db.pending_sync.delete(item.id);
+        resultado.processed++;
+        continue;
+      }
+
+      const tipo = clasificarError(error);
+      // `intentos` cuenta los rechazos del servidor (para rendirse);
+      // `esperas`, todas las fallas (para alargar la espera entre intentos).
+      const intentos = (item.intentos || 0) + (tipo === 'red' ? 0 : 1);
+      const esperas = (item.esperas || 0) + 1;
+
+      if (tipo === 'permanente' || intentos >= MAX_INTENTOS) {
+        console.error(`[Sync] Operación #${item.id} enviada a la bandeja de errores:`, error);
+        await db.pending_sync.update(item.id, {
+          estado: 'error',
+          intentos,
+          ultimoError: describirError(error),
+        });
+        resultado.errores++;
+        continue;
+      }
+
+      // Error momentáneo: se corta acá para no alterar el orden de la cola.
+      const proximoIntento = Date.now() + backoffMs(esperas);
+      await db.pending_sync.update(item.id, { intentos, esperas, proximoIntento, ultimoError: describirError(error) });
+      resultado.reintentarEn = proximoIntento;
+      break;
+    }
+  }
+
+  notifyQueueChange();
+  return resultado;
+}
+
+let procesamientoEnCurso = null;
+
+/**
+ * Procesa la cola contra Supabase en orden FIFO.
+ * - Éxito: la operación sale de la cola.
+ * - Error momentáneo: se programa un reintento con espera exponencial y se
+ *   corta el procesamiento (las siguientes pueden depender de esta).
+ * - Error permanente: la operación pasa a la bandeja y se sigue con la próxima.
+ *
+ * Si ya hay un procesamiento en curso, devuelve ese mismo (lock): dos llamadas
+ * en paralelo mandarían dos veces la misma operación.
+ *
+ * @param {{ ignorarEspera?: boolean }} [opciones] - ignorarEspera: no respetar
+ *   la espera del próximo reintento (al reconectar o al pedirlo el usuario).
+ * @returns {Promise<{ processed: number, errores: number, reintentarEn: number|null, sinSesion?: boolean }>}
+ */
+export function processPendingSyncs(opciones) {
+  if (!procesamientoEnCurso) {
+    procesamientoEnCurso = procesarCola(opciones).finally(() => {
+      procesamientoEnCurso = null;
+    });
+  }
+  return procesamientoEnCurso;
 }
 
 // =============================================================================

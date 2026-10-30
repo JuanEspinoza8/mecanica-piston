@@ -17,6 +17,10 @@ const useAppStore = create(
       pendingSyncCount: 0,
       setPendingSyncCount: (count) => set({ pendingSyncCount: count }),
 
+      // Operaciones que fallaron de forma permanente (bandeja de errores)
+      syncErrorCount: 0,
+      setSyncErrorCount: (count) => set({ syncErrorCount: count }),
+
       // Autenticación (alimentada por Supabase Auth via ProtectedRoute)
       user: null,
       isAuthenticated: false,
