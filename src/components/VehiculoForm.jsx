@@ -1,18 +1,23 @@
-import { useForm } from 'react-hook-form';
+import { useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { vehiculoSchema } from '../lib/schemas';
 import { User, CarFront, Hash, Calendar, Save, Loader2, Search, ChevronDown } from 'lucide-react';
 import { useClientes } from '../hooks/useClientes';
 import { marcas, getModelos } from '../data/vehiculoCatalog';
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 
 export default function VehiculoForm({ defaultValues, onSubmit, isSubmitting, hideClienteField }) {
   const { data: clientes = [], isLoading: isLoadingClientes } = useClientes();
-  const [modelosSugeridos, setModelosSugeridos] = useState([]);
-  const [marcaCustom, setMarcaCustom] = useState(false);
-  const [modeloCustom, setModeloCustom] = useState(false);
+  // Marca o modelo fuera del catálogo: se escriben a mano en vez de elegirse
+  const [marcaCustom, setMarcaCustom] = useState(
+    () => !!defaultValues?.marca && !marcas.includes(defaultValues.marca)
+  );
+  const [modeloCustom, setModeloCustom] = useState(() => {
+    if (!marcas.includes(defaultValues?.marca)) return true;
+    return !!defaultValues?.modelo && !getModelos(defaultValues.marca).includes(defaultValues.modelo);
+  });
 
-  const { register, handleSubmit, watch, setValue, formState: { errors } } = useForm({
+  const { register, handleSubmit, control, setValue, formState: { errors } } = useForm({
     resolver: zodResolver(vehiculoSchema),
     defaultValues: defaultValues || {
       patente: '',
@@ -24,28 +29,17 @@ export default function VehiculoForm({ defaultValues, onSubmit, isSubmitting, hi
     }
   });
 
-  const marcaActual = watch('marca');
+  const [marcaActual, modeloActual] = useWatch({ control, name: ['marca', 'modelo'] });
+  const modelosSugeridos = getModelos(marcaActual);
 
-  // Update model suggestions when brand changes
-  useEffect(() => {
-    const modelos = getModelos(marcaActual);
-    setModelosSugeridos(modelos);
-    // If brand is in catalog, show dropdown for modelo; otherwise free text
+  // Al cambiar la marca: si está en el catálogo, el modelo se elige de una
+  // lista; si no, se escribe a mano. Se ajusta durante el render (patrón
+  // recomendado por React) en lugar de usar un efecto.
+  const [marcaAnterior, setMarcaAnterior] = useState(marcaActual);
+  if (marcaActual !== marcaAnterior) {
+    setMarcaAnterior(marcaActual);
     setModeloCustom(!marcas.includes(marcaActual));
-  }, [marcaActual]);
-
-  // Check if current default marca is in catalog
-  useEffect(() => {
-    if (defaultValues?.marca && !marcas.includes(defaultValues.marca)) {
-      setMarcaCustom(true);
-    }
-    if (defaultValues?.modelo) {
-      const modelos = getModelos(defaultValues.marca);
-      if (!modelos.includes(defaultValues.modelo)) {
-        setModeloCustom(true);
-      }
-    }
-  }, [defaultValues]);
+  }
 
   const handleMarcaSelect = (value) => {
     if (value === '__custom__') {
@@ -190,7 +184,7 @@ export default function VehiculoForm({ defaultValues, onSubmit, isSubmitting, hi
                   <CarFront className="h-5 w-5 text-neutral-400 dark:text-neutral-500" />
                 </div>
                 <select
-                  value={watch('modelo')}
+                  value={modeloActual}
                   onChange={(e) => handleModeloSelect(e.target.value)}
                   className={selectClass(errors.modelo)}
                 >

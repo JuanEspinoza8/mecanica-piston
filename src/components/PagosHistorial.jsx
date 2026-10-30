@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Calendar, CreditCard, Receipt, Wallet, ArrowUpRight, Loader2, Download, Trash2 } from 'lucide-react';
+import { Calendar, Receipt, Wallet, ArrowUpRight, Loader2, Download, Trash2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { usePagos, useDeletePago } from '../hooks/usePagos';
 import ConfirmModal from './ConfirmModal';
@@ -141,7 +141,9 @@ export default function PagosHistorial({ clienteId }) {
                 comprobante_url: deleteTarget.comprobante_url,
               });
               setDeleteTarget(null);
-            } catch (e) {}
+            } catch {
+              // El hook ya muestra el error
+            }
           }
         }}
         isLoading={isDeleting}

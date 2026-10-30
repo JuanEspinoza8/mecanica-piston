@@ -1,4 +1,5 @@
 import { lazy } from 'react'
+import { Routes, Route } from 'react-router-dom'
 
 const Dashboard = lazy(() => import('./pages/Dashboard'))
 const ClientesList = lazy(() => import('./pages/ClientesList'))
@@ -14,7 +15,8 @@ const NotFound = lazy(() => import('./pages/NotFound'))
 const SearchResults = lazy(() => import('./pages/SearchResults'))
 const Economia = lazy(() => import('./pages/Economia'))
 
-export const routes = [
+// Las páginas se cargan bajo demanda (code splitting)
+const routes = [
   {
     path: '/',
     element: <Dashboard />,
@@ -68,3 +70,13 @@ export const routes = [
     element: <NotFound />,
   },
 ]
+
+export default function AppRoutes() {
+  return (
+    <Routes>
+      {routes.map((route) => (
+        <Route key={route.path} path={route.path} element={route.element} />
+      ))}
+    </Routes>
+  )
+}

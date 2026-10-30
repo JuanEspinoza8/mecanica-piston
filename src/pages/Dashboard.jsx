@@ -8,7 +8,7 @@ import { useActividadReciente } from '../hooks/useHistorial';
 
 export default function Dashboard() {
   const { data: stats, isLoading: isLoadingStats } = useDashboard();
-  const { data: actividad = [], isLoading: isLoadingActividad } = useActividadReciente();
+  const { data: actividad = [] } = useActividadReciente();
 
   const statCards = [
     { label: 'Órdenes Activas', value: stats?.ordenesActivas ?? '-', icon: Wrench, color: 'text-blue-600 dark:text-blue-400', bg: 'bg-blue-100 dark:bg-blue-900/30' },

@@ -1,18 +1,21 @@
 import { X, ChevronLeft, ChevronRight } from 'lucide-react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 
-export default function ImageViewerModal({ isOpen, images, initialIndex, onClose }) {
-  const [currentIndex, setCurrentIndex] = useState(initialIndex || 0);
+// Se monta solo mientras está abierto, así el índice arranca en la imagen elegida
+export default function ImageViewerModal({ images, initialIndex = 0, onClose }) {
+  const [currentIndex, setCurrentIndex] = useState(initialIndex);
+  const total = images?.length || 0;
 
-  // Sincronizar el índice cuando se abre con una imagen específica
-  useEffect(() => {
-    setCurrentIndex(initialIndex);
-  }, [initialIndex, isOpen]);
+  const handleNext = useCallback(() => {
+    setCurrentIndex((prev) => (prev + 1) % total);
+  }, [total]);
+
+  const handlePrev = useCallback(() => {
+    setCurrentIndex((prev) => (prev === 0 ? total - 1 : prev - 1));
+  }, [total]);
 
   // Manejo de teclado (Esc para cerrar, Flechas para navegar)
   useEffect(() => {
-    if (!isOpen) return;
-
     const handleKeyDown = (e) => {
       if (e.key === 'Escape') onClose();
       if (e.key === 'ArrowRight') handleNext();
@@ -21,17 +24,11 @@ export default function ImageViewerModal({ isOpen, images, initialIndex, onClose
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, currentIndex, images.length]);
+  }, [onClose, handleNext, handlePrev]);
 
-  if (!isOpen || !images || images.length === 0) return null;
-
-  const handleNext = () => {
-    setCurrentIndex((prev) => (prev + 1) % images.length);
-  };
-
-  const handlePrev = () => {
-    setCurrentIndex((prev) => (prev === 0 ? images.length - 1 : prev - 1));
-  };
+  if (total === 0) return null;
+  // Por si la lista cambia mientras el visor está abierto
+  const imagen = images[Math.min(currentIndex, total - 1)];
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 backdrop-blur-md animate-in fade-in duration-200">
@@ -60,13 +57,13 @@ export default function ImageViewerModal({ isOpen, images, initialIndex, onClose
         onClick={(e) => e.stopPropagation()} // Evita cerrar al hacer clic en la imagen
       >
         <img 
-          src={images[currentIndex].url} 
-          alt={images[currentIndex].titulo || 'Evidencia fotográfica'} 
+          src={imagen.url} 
+          alt={imagen.titulo || 'Evidencia fotográfica'} 
           className="max-w-full max-h-full object-contain rounded-lg shadow-2xl"
         />
-        {images[currentIndex].titulo && (
+        {imagen.titulo && (
           <p className="absolute bottom-[-40px] text-white text-lg font-medium text-center w-full">
-            {images[currentIndex].titulo}
+            {imagen.titulo}
           </p>
         )}
       </div>

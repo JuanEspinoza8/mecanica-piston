@@ -106,7 +106,6 @@ export default function ArchivosOrden({ ordenId }) {
       {/* Modal visor de imágenes */}
       {viewerIndex !== null && (
         <ImageViewerModal
-          isOpen
           images={fotos}
           initialIndex={viewerIndex}
           onClose={() => setViewerIndex(null)}

@@ -76,7 +76,7 @@ export default function AddRepuestoModal({ isOpen, onClose, ordenId }) {
       setSelectedFileName('');
       setSelectedFile(null);
       onClose();
-    } catch (e) {
+    } catch {
       toast.error("Error al añadir repuesto");
     }
   };

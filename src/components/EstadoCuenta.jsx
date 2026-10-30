@@ -1,12 +1,10 @@
 import { DollarSign, AlertCircle, CheckCircle2, Loader2, Plus } from 'lucide-react';
 import { useDeudas } from '../hooks/useDeudas';
-import { usePagos } from '../hooks/usePagos';
 
 export default function EstadoCuenta({ clienteId, onRegistrarPago, onCrearDeuda }) {
   const { data: deudas = [], isLoading: isLoadingDeudas } = useDeudas(clienteId);
-  const { data: pagos = [], isLoading: isLoadingPagos } = usePagos(clienteId);
 
-  if (isLoadingDeudas || isLoadingPagos) {
+  if (isLoadingDeudas) {
     return (
       <div className="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 p-8 flex flex-col justify-center items-center">
         <Loader2 className="w-8 h-8 animate-spin text-neutral-400 mb-4" />

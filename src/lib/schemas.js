@@ -14,7 +14,7 @@ export const clienteSchema = z.object({
   telefono: z.string()
     .min(8, 'El teléfono debe tener al menos 8 dígitos')
     .max(20, 'Teléfono demasiado largo')
-    .regex(/^[\d\s\-\+\(\)]+$/, 'Formato de teléfono inválido'),
+    .regex(/^[\d\s\-+()]+$/, 'Formato de teléfono inválido'),
   email: z.string()
     .email('El correo electrónico no es válido')
     .optional()

@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { useForm as useReactHookForm } from 'react-hook-form';
+import { useForm as useReactHookForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { pagoSchema } from '../lib/schemas';
 import { DollarSign, Calendar, FileText, CreditCard, Save, X, UploadCloud, ChevronDown, AlertCircle, CheckCircle2 } from 'lucide-react';
@@ -11,7 +11,7 @@ export default function PagoForm({ clienteId, ordenId, onSuccess, onCancel, pres
   const { data: deudasPendientes = [] } = useDeudasPendientes(clienteId);
   const createPagoMutation = useCreatePago();
 
-  const { register, handleSubmit, watch, setValue, setError, formState: { errors } } = useReactHookForm({
+  const { register, handleSubmit, control, setValue, setError, formState: { errors } } = useReactHookForm({
     resolver: zodResolver(pagoSchema),
     defaultValues: {
       deuda_id: preselectedDeudaId || '',
@@ -23,8 +23,7 @@ export default function PagoForm({ clienteId, ordenId, onSuccess, onCancel, pres
   });
 
   const [archivoPDF, setArchivoPDF] = useState(null);
-  const selectedDeudaId = watch('deuda_id');
-  const montoInput = watch('monto');
+  const [selectedDeudaId, montoInput] = useWatch({ control, name: ['deuda_id', 'monto'] });
 
   // Deuda seleccionada
   const deudaSeleccionada = useMemo(() => {

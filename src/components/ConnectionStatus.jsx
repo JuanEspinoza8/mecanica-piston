@@ -8,12 +8,20 @@ export default function ConnectionStatus() {
   const [showOffline, setShowOffline] = useState(!navigator.onLine);
   const pendingSyncCount = useAppStore((s) => s.pendingSyncCount);
 
+  // Mostrar el banner offline de nuevo cada vez que haya un nuevo cambio
+  // pendiente. Se ajusta durante el render (patrón recomendado por React)
+  // en lugar de usar un efecto que vuelva a renderizar.
+  const [conteoAnterior, setConteoAnterior] = useState(pendingSyncCount);
+  if (pendingSyncCount !== conteoAnterior) {
+    setConteoAnterior(pendingSyncCount);
+    if (!isOnline) setShowOffline(true);
+  }
+
   useEffect(() => {
     const handleOnline = () => {
       setIsOnline(true);
       setShowReconnected(true);
       setShowOffline(false);
-      setTimeout(() => setShowReconnected(false), 3000);
     };
 
     const handleOffline = () => {
@@ -30,14 +38,18 @@ export default function ConnectionStatus() {
     };
   }, []);
 
-  // Mostrar el banner offline brevemente cada vez que se desconecte o haya un nuevo cambio pendiente
+  // Los banners se ocultan solos: el de offline a los 4 s y el de reconexión a los 3 s
   useEffect(() => {
-    if (!isOnline) {
-      setShowOffline(true);
-      const timer = setTimeout(() => setShowOffline(false), 4000); // Se oculta a los 4s
-      return () => clearTimeout(timer);
-    }
-  }, [isOnline, pendingSyncCount]);
+    if (!showOffline) return;
+    const timer = setTimeout(() => setShowOffline(false), 4000);
+    return () => clearTimeout(timer);
+  }, [showOffline, pendingSyncCount]);
+
+  useEffect(() => {
+    if (!showReconnected) return;
+    const timer = setTimeout(() => setShowReconnected(false), 3000);
+    return () => clearTimeout(timer);
+  }, [showReconnected]);
 
   // Si está online y no hay que mostrar reconexión, o si está offline y ya pasó el tiempo de mostrarse
   if ((isOnline && !showReconnected) || (!isOnline && !showOffline)) return null;
