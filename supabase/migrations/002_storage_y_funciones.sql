@@ -7,6 +7,29 @@
 -- ==============================================================================
 
 -- ------------------------------------------------------------------------------
+-- 0. Borrar las políticas abiertas de Storage creadas desde el dashboard (por
+--    ejemplo "Permitir todo temporalmente ..."): son para el rol public, así
+--    que cualquiera con la anon key podía leer, subir, modificar o borrar
+--    archivos de estos buckets sin iniciar sesión.
+-- ------------------------------------------------------------------------------
+
+DO $$
+DECLARE
+  pol RECORD;
+BEGIN
+  FOR pol IN
+    SELECT policyname
+    FROM pg_policies
+    WHERE schemaname = 'storage'
+      AND tablename = 'objects'
+      AND roles && ARRAY['public', 'anon']::name[]
+      AND (coalesce(qual, '') || coalesce(with_check, '')) ~ 'archivos'
+  LOOP
+    EXECUTE format('DROP POLICY %I ON storage.objects', pol.policyname);
+  END LOOP;
+END $$;
+
+-- ------------------------------------------------------------------------------
 -- 1. Storage: solo usuarios autenticados leen y escriben en los buckets
 --    del taller. createSignedUrl necesita permiso de SELECT sobre
 --    storage.objects, y la subida diferida de comprobantes usa upsert
