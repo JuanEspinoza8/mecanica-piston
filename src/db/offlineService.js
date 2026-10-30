@@ -90,6 +90,24 @@ export async function cacheData(tabla, datos, alcance) {
 }
 
 /**
+ * cacheData para una consulta por id: guarda el registro o, si el servidor
+ * dice que no existe (dato = null), lo borra del caché. No toca registros con
+ * cambios locales sin sincronizar.
+ */
+export async function reconcileOne(tabla, id, dato) {
+  try {
+    await db.transaction('rw', db[tabla], db.pending_sync, async () => {
+      const locales = await idsConCambiosLocales(tabla);
+      if (locales.has(id)) return;
+      if (dato) await db[tabla].put(dato);
+      else await db[tabla].delete(id);
+    });
+  } catch (error) {
+    console.warn(`[Offline] Error cacheando ${tabla}/${id}:`, error);
+  }
+}
+
+/**
  * Guarda un solo registro en IndexedDB.
  */
 export async function cacheOne(tabla, dato) {

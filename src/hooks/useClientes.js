@@ -1,8 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
-import { toast } from 'sonner';
-import { cacheData, cacheOne, getCachedData, getCachedById, removeCached, offlineCascadeDelete, addPendingSync, isOnline, getPendingCount, generateId } from '../db/offlineService';
-import useAppStore from '../store/useAppStore';
+import { cacheOne, getCachedData, offlineCascadeDelete } from '../db/offlineService';
+import { offlineQuery, offlineQueryOne, offlineMutation, insertarOffline, actualizarOffline, borrarOffline } from './offlineHelpers';
 
 // Keys para react-query
 export const CLIENTES_KEYS = {
@@ -10,62 +9,32 @@ export const CLIENTES_KEYS = {
   detail: (id) => ['clientes', id],
 };
 
+const porNombre = (a, b) => (a.nombre || '').localeCompare(b.nombre || '');
+
+// Query de la lista completa (también la usa usePrefetch)
+export const clientesQuery = {
+  queryKey: CLIENTES_KEYS.all,
+  queryFn: offlineQuery({
+    tabla: 'clientes',
+    remoto: () => supabase.from('clientes').select('*').order('nombre', { ascending: true }),
+    local: async () => (await getCachedData('clientes')).sort(porNombre),
+  }),
+};
+
 // 1. Obtener todos los clientes
 export function useClientes() {
-  return useQuery({
-    queryKey: CLIENTES_KEYS.all,
-    queryFn: async () => {
-      if (!isOnline()) {
-        const cached = await getCachedData('clientes');
-        return cached || [];
-      }
-      try {
-        const { data, error } = await supabase
-          .from('clientes')
-          .select('*')
-          .order('nombre', { ascending: true });
-        
-        if (error) throw new Error(error.message);
-        
-        // Cache en IndexedDB para uso offline
-        await cacheData('clientes', data);
-        return data;
-      } catch (err) {
-        const cached = await getCachedData('clientes');
-        if (cached && cached.length > 0) return cached;
-        throw err;
-      }
-    },
-  });
+  return useQuery(clientesQuery);
 }
 
 // 2. Obtener un cliente por ID
 export function useCliente(id) {
   return useQuery({
     queryKey: CLIENTES_KEYS.detail(id),
-    queryFn: async () => {
-      if (!id) return null;
-      if (!isOnline()) {
-        const cached = await getCachedById('clientes', id);
-        return cached || null;
-      }
-      try {
-        const { data, error } = await supabase
-          .from('clientes')
-          .select('*')
-          .eq('id', id)
-          .single();
-        
-        if (error) throw new Error(error.message);
-        
-        await cacheOne('clientes', data);
-        return data;
-      } catch (err) {
-        const cached = await getCachedById('clientes', id);
-        if (cached) return cached;
-        throw err;
-      }
-    },
+    queryFn: offlineQueryOne({
+      tabla: 'clientes',
+      id,
+      remoto: () => supabase.from('clientes').select('*').eq('id', id).maybeSingle(),
+    }),
     enabled: !!id,
   });
 }
@@ -75,28 +44,20 @@ export function useCreateCliente() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (nuevoCliente) => {
-      if (!isOnline()) {
-        // Offline: guardar localmente y encolar
-        const tempId = generateId();
-        const clienteConId = { ...nuevoCliente, id: tempId, created_at: new Date().toISOString() };
-        await cacheOne('clientes', clienteConId);
-        await addPendingSync('clientes', 'insert', { ...nuevoCliente, id: tempId });
-        useAppStore.getState().setPendingSyncCount(await getPendingCount());
-        toast.info('Sin conexión — Cliente guardado localmente');
-        return clienteConId;
-      }
-
-      const { data, error } = await supabase
-        .from('clientes')
-        .insert([nuevoCliente])
-        .select()
-        .single();
-      
-      if (error) throw new Error(error.message);
-      await cacheOne('clientes', data);
-      return data;
-    },
+    mutationFn: offlineMutation({
+      online: async (nuevoCliente) => {
+        const { data, error } = await supabase
+          .from('clientes')
+          .insert([nuevoCliente])
+          .select()
+          .single();
+        if (error) throw new Error(error.message);
+        await cacheOne('clientes', data);
+        return data;
+      },
+      offline: (nuevoCliente) => insertarOffline('clientes', nuevoCliente),
+      aviso: 'Cliente guardado localmente',
+    }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: CLIENTES_KEYS.all });
     },
@@ -108,27 +69,21 @@ export function useUpdateCliente() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ id, ...datos }) => {
-      if (!isOnline()) {
-        const updated = { id, ...datos };
-        await cacheOne('clientes', updated);
-        await addPendingSync('clientes', 'update', { id, ...datos });
-        useAppStore.getState().setPendingSyncCount(await getPendingCount());
-        toast.info('Sin conexión — Cambios guardados localmente');
-        return updated;
-      }
-
-      const { data, error } = await supabase
-        .from('clientes')
-        .update(datos)
-        .eq('id', id)
-        .select()
-        .single();
-      
-      if (error) throw new Error(error.message);
-      await cacheOne('clientes', data);
-      return data;
-    },
+    mutationFn: offlineMutation({
+      online: async ({ id, ...datos }) => {
+        const { data, error } = await supabase
+          .from('clientes')
+          .update(datos)
+          .eq('id', id)
+          .select()
+          .single();
+        if (error) throw new Error(error.message);
+        await cacheOne('clientes', data);
+        return data;
+      },
+      offline: ({ id, ...datos }) => actualizarOffline('clientes', id, datos),
+      aviso: 'Cambios guardados localmente',
+    }),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: CLIENTES_KEYS.all });
       queryClient.invalidateQueries({ queryKey: CLIENTES_KEYS.detail(data.id) });
@@ -141,24 +96,22 @@ export function useDeleteCliente() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (id) => {
-      if (!isOnline()) {
+    mutationFn: offlineMutation({
+      online: async (id) => {
+        const { error } = await supabase
+          .from('clientes')
+          .delete()
+          .eq('id', id);
+        if (error) throw new Error(error.message);
         await offlineCascadeDelete('clientes', id);
-        await addPendingSync('clientes', 'delete', { id });
-        useAppStore.getState().setPendingSyncCount(await getPendingCount());
-        toast.info('Sin conexión — Eliminación pendiente de sincronizar');
         return id;
-      }
-
-      const { error } = await supabase
-        .from('clientes')
-        .delete()
-        .eq('id', id);
-      
-      if (error) throw new Error(error.message);
-      await removeCached('clientes', id);
-      return id;
-    },
+      },
+      offline: async (id) => {
+        await borrarOffline('clientes', id);
+        return id;
+      },
+      aviso: 'Eliminación pendiente de sincronizar',
+    }),
     onSuccess: (id) => {
       queryClient.invalidateQueries({ queryKey: CLIENTES_KEYS.all });
       queryClient.removeQueries({ queryKey: CLIENTES_KEYS.detail(id) });

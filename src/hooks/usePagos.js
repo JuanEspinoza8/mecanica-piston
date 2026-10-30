@@ -1,10 +1,12 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
 import { toast } from 'sonner';
-import { cacheData, cacheOne, getCachedByIndex, getCachedById, addPendingSync, addPendingUpload, removeCached, isOnline, getPendingCount, generateId } from '../db/offlineService';
-import useAppStore from '../store/useAppStore';
+import { addPendingUpload, cacheOne, generateId, getCachedById, getCachedByIndex, getCachedData, isOnline, removeCached } from '../db/offlineService';
 import { BUCKET_COMPROBANTES, SIGNED_URL_STALE_TIME, comprobantePath, getSignedUrls } from '../lib/storage';
+import { offlineQuery, offlineMutation, insertarOffline, borrarOffline } from './offlineHelpers';
 import { DEUDAS_KEYS } from './useDeudas';
+
+const masNuevoPrimero = (a, b) => new Date(b.fecha) - new Date(a.fecha);
 
 // El bucket de comprobantes es privado: se firma una URL por cada pago que
 // tenga comprobante. Sin conexión no hay URL y el PDF no se puede abrir.
@@ -13,31 +15,40 @@ async function conComprobantesFirmados(pagos) {
   return pagos.map(p => ({ ...p, comprobante_signed_url: urls[comprobantePath(p.comprobante_url)] || null }));
 }
 
+// Las URLs firmadas vencen: la copia local no las usa
+// eslint-disable-next-line no-unused-vars
+const sinUrlFirmada = ({ comprobante_signed_url, ...pago }) => pago;
+
+// Query de todos los pagos (la usa usePrefetch para llenar el caché offline)
+export const pagosQuery = {
+  queryKey: ['pagos', 'all'],
+  queryFn: offlineQuery({
+    tabla: 'pagos',
+    remoto: () => supabase
+      .from('pagos')
+      .select('*, deudas(id, concepto, monto_total, en_cuotas, cantidad_cuotas)')
+      .order('fecha', { ascending: false }),
+    local: async () => (await getCachedData('pagos')).sort(masNuevoPrimero),
+  }),
+};
+
 // Hook para obtener el historial de pagos de un cliente
 export function usePagos(clienteId) {
   return useQuery({
     queryKey: ['pagos', clienteId],
-    queryFn: async () => {
-      if (!isOnline()) {
-        const cached = await getCachedByIndex('pagos', 'cliente_id', clienteId);
-        return cached || [];
-      }
-      try {
-        const { data, error } = await supabase
-          .from('pagos')
-          .select('*, deudas(id, concepto, monto_total, en_cuotas, cantidad_cuotas)')
-          .eq('cliente_id', clienteId)
-          .order('fecha', { ascending: false });
-
-        if (error) throw error;
-        await cacheData('pagos', data, { campo: 'cliente_id', valor: clienteId });
-        return conComprobantesFirmados(data);
-      } catch (err) {
-        const cached = await getCachedByIndex('pagos', 'cliente_id', clienteId);
-        if (cached && cached.length > 0) return cached;
-        throw err;
-      }
-    },
+    queryFn: offlineQuery({
+      tabla: 'pagos',
+      remoto: () => supabase
+        .from('pagos')
+        .select('*, deudas(id, concepto, monto_total, en_cuotas, cantidad_cuotas)')
+        .eq('cliente_id', clienteId)
+        .order('fecha', { ascending: false }),
+      preparar: conComprobantesFirmados,
+      local: async () => (await getCachedByIndex('pagos', 'cliente_id', clienteId))
+        .map(sinUrlFirmada)
+        .sort(masNuevoPrimero),
+      alcance: { campo: 'cliente_id', valor: clienteId },
+    }),
     enabled: !!clienteId,
     staleTime: SIGNED_URL_STALE_TIME,
   });
@@ -62,36 +73,67 @@ async function ajustarDeudaLocal(deudaId, delta) {
   return actualizada;
 }
 
+/**
+ * Arma el pago a insertar. El id se genera acá para poder nombrar el
+ * comprobante antes de insertar y para que el pago encolado offline conserve
+ * el mismo id al sincronizar.
+ */
+function prepararPago({ archivoPDF, metodo, deuda_id, ...pagoData }) {
+  const id = generateId();
+  return {
+    archivoPDF,
+    rutaComprobante: archivoPDF ? `${pagoData.cliente_id}/${id}.pdf` : null,
+    payload: {
+      id,
+      cliente_id: pagoData.cliente_id,
+      deuda_id: deuda_id || null,
+      orden_id: pagoData.orden_id || null,
+      monto: parseFloat(String(pagoData.monto).replace(/\./g, '').replace(',', '.')),
+      metodo_pago: metodo,
+      comprobante_url: null,
+      nota: pagoData.nota || null,
+      fecha: pagoData.fecha,
+    },
+  };
+}
+
 // Hook para registrar un nuevo pago vinculado a una deuda
 export function useCreatePago() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ archivoPDF, metodo, deuda_id, ...pagoData }) => {
-      const monto = parseFloat(String(pagoData.monto).replace(/\./g, '').replace(',', '.'));
-      // El id se genera acá para poder nombrar el comprobante antes de insertar
-      // y para que el pago encolado offline conserve el mismo id al sincronizar.
-      const id = generateId();
-      const rutaComprobante = archivoPDF ? `${pagoData.cliente_id}/${id}.pdf` : null;
+    mutationFn: offlineMutation({
+      online: async (variables) => {
+        const { archivoPDF, rutaComprobante, payload } = prepararPago(variables);
 
-      const payload = {
-        id,
-        cliente_id: pagoData.cliente_id,
-        deuda_id: deuda_id || null,
-        orden_id: pagoData.orden_id || null,
-        monto,
-        metodo_pago: metodo,
-        comprobante_url: null,
-        nota: pagoData.nota || null,
-        fecha: pagoData.fecha,
-      };
+        if (archivoPDF) {
+          const { error: uploadError } = await supabase.storage
+            .from(BUCKET_COMPROBANTES)
+            .upload(rutaComprobante, archivoPDF);
 
-      // --- OFFLINE ---
-      if (!isOnline()) {
-        const deuda = await ajustarDeudaLocal(deuda_id, monto);
-        const pagoLocal = {
-          ...payload,
-          created_at: new Date().toISOString(),
+          if (uploadError) {
+            throw new Error('Error al subir el comprobante: ' + uploadError.message);
+          }
+        }
+
+        // Se guarda la ruta, no una URL: el bucket es privado y la URL firmada
+        // se genera al mostrar el pago. La deuda la actualiza el trigger de Postgres.
+        const { data, error } = await supabase
+          .from('pagos')
+          .insert([{ ...payload, comprobante_url: rutaComprobante }])
+          .select()
+          .single();
+
+        if (error) throw error;
+
+        await cacheOne('pagos', data);
+        return data;
+      },
+      offline: async (variables) => {
+        const { archivoPDF, rutaComprobante, payload } = prepararPago(variables);
+        const deuda = await ajustarDeudaLocal(payload.deuda_id, payload.monto);
+
+        const pagoLocal = await insertarOffline('pagos', payload, {
           comprobante_pendiente: !!archivoPDF,
           deudas: deuda ? {
             id: deuda.id,
@@ -100,51 +142,25 @@ export function useCreatePago() {
             en_cuotas: deuda.en_cuotas,
             cantidad_cuotas: deuda.cantidad_cuotas,
           } : null,
-        };
+        });
 
-        await cacheOne('pagos', pagoLocal);
-        await addPendingSync('pagos', 'insert', payload);
+        // El PDF se guarda en IndexedDB y se sube después del insert del pago
         if (archivoPDF) {
           await addPendingUpload({
             tabla: 'pagos',
-            registroId: id,
+            registroId: payload.id,
             campo: 'comprobante_url',
             bucket: BUCKET_COMPROBANTES,
             path: rutaComprobante,
             file: archivoPDF,
           });
         }
-        useAppStore.getState().setPendingSyncCount(await getPendingCount());
-        toast.info(archivoPDF
-          ? 'Sin conexión — Pago guardado; el comprobante se subirá al reconectar'
-          : 'Sin conexión — Pago guardado localmente');
         return pagoLocal;
-      }
-
-      // --- ONLINE ---
-      if (archivoPDF) {
-        const { error: uploadError } = await supabase.storage
-          .from(BUCKET_COMPROBANTES)
-          .upload(rutaComprobante, archivoPDF);
-
-        if (uploadError) {
-          throw new Error('Error al subir el comprobante: ' + uploadError.message);
-        }
-      }
-
-      // Se guarda la ruta, no una URL: el bucket es privado y la URL firmada se
-      // genera al mostrar el pago. La deuda la actualiza el trigger de Postgres.
-      const { data, error } = await supabase
-        .from('pagos')
-        .insert([{ ...payload, comprobante_url: rutaComprobante }])
-        .select()
-        .single();
-
-      if (error) throw error;
-
-      await cacheOne('pagos', data);
-      return data;
-    },
+      },
+      aviso: ({ archivoPDF }) => (archivoPDF
+        ? 'Pago guardado; el comprobante se subirá al reconectar'
+        : 'Pago guardado localmente'),
+    }),
     onSuccess: (data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['pagos', variables.cliente_id] });
       queryClient.invalidateQueries({ queryKey: ['saldo', variables.cliente_id] });
@@ -164,33 +180,32 @@ export function useDeletePago() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ id, cliente_id, deuda_id, monto, comprobante_url }) => {
-      if (!isOnline()) {
+    mutationFn: offlineMutation({
+      online: async ({ id, cliente_id, comprobante_url }) => {
+        // El trigger de Postgres descuenta el pago de la deuda.
+        const { error } = await supabase
+          .from('pagos')
+          .delete()
+          .eq('id', id);
+        if (error) throw error;
+
         await removeCached('pagos', id);
-        await ajustarDeudaLocal(deuda_id, -Number(monto));
-        await addPendingSync('pagos', 'delete', { id });
-        useAppStore.getState().setPendingSyncCount(await getPendingCount());
-        toast.info('Sin conexión — Eliminación pendiente de sincronizar');
+
+        const ruta = comprobantePath(comprobante_url);
+        if (ruta) {
+          const { error: storageError } = await supabase.storage.from(BUCKET_COMPROBANTES).remove([ruta]);
+          if (storageError) console.warn('[Pagos] No se pudo borrar el comprobante:', storageError);
+        }
+
         return { id, cliente_id };
-      }
-
-      // El trigger de Postgres descuenta el pago de la deuda.
-      const { error } = await supabase
-        .from('pagos')
-        .delete()
-        .eq('id', id);
-      if (error) throw error;
-
-      await removeCached('pagos', id);
-
-      const ruta = comprobantePath(comprobante_url);
-      if (ruta) {
-        const { error: storageError } = await supabase.storage.from(BUCKET_COMPROBANTES).remove([ruta]);
-        if (storageError) console.warn('[Pagos] No se pudo borrar el comprobante:', storageError);
-      }
-
-      return { id, cliente_id };
-    },
+      },
+      offline: async ({ id, cliente_id, deuda_id, monto }) => {
+        await borrarOffline('pagos', id);
+        await ajustarDeudaLocal(deuda_id, -Number(monto));
+        return { id, cliente_id };
+      },
+      aviso: 'Eliminación pendiente de sincronizar',
+    }),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['pagos', data.cliente_id] });
       queryClient.invalidateQueries({ queryKey: ['saldo', data.cliente_id] });
