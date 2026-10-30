@@ -878,7 +878,7 @@ export default function OrdenDetail() {
         onClose={() => setDeleteOrdenModal(false)}
         onConfirm={handleDeleteOrden}
         titulo="¿Eliminar esta orden?"
-        mensaje={`Se eliminará permanentemente la orden ${displayId} y todos sus datos asociados (tareas, repuestos, deudas y pagos). Esta acción no se puede deshacer.`}
+        mensaje={`Se eliminará permanentemente la orden ${displayId} con sus tareas, repuestos y archivos. Las deudas y los pagos del cliente se conservan, sin vínculo a esta orden. Esta acción no se puede deshacer.`}
         textoConfirmar="Sí, eliminar orden"
       />
 
